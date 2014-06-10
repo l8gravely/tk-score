@@ -20,6 +20,8 @@ use Tk::FileSelect;
 use IO::Handle;
 use Data::Dumper;
 use Date::Calc qw(Decode_Date_US Delta_Days Add_Delta_Days);
+use Getopt::Long;
+use Pod::Usage;
 
 eval "use Tk::DateEntry; 1" or 
   die "you need the module Tk::DateEntry installed to run this program.\n";
@@ -29,11 +31,11 @@ eval "use Tk::Month; 1" or
 
 use YAML qw(DumpFile LoadFile);
 
-my $VERSION = "v1.4 (2012-12-18)";
+my $VERSION = "v1.5 (2013-03-03)";
 
 my $game_file = "DSL-2012-Outdoor.tks";
 my $rpt_file = $game_file;
-$rpt_file =~ s/\.tks$/\.rpt/;
+$rpt_file =~ s/\.tks$//;
 
 my $NeedSave = 0;
 
@@ -60,6 +62,12 @@ my $okcolor    = 'lightgreen';
 
 # Format is # -> Name
 my %teams = ();
+
+# Debugging and option parsing
+my $DEBUG;
+my $prog_help;
+my $man;
+my $initialize_season = 0;
 
 #---------------------------------------------------------------------
 # These schedules should be stored in a YAML file somewhere else.
@@ -104,7 +112,6 @@ my %sched_template = ( 8 => {
 
 my $match_template = { Week => 0,
                        Date => '',
-                       DateOrig => '',
                        Time => '',
                        Field => '',
                        Home => 0,
@@ -117,6 +124,19 @@ my $match_template = { Week => 0,
                        AwayPoints => 0,
                        Complete => 0,
                     };
+
+my $playoff_sched = { "Three Weeks, 8 Teams" => 
+		      { 1 => [ "1-8 (A)", "2-7 (B)", "3-6 (C)", "4-5 (D)" ], 
+			2 => [ "W:A-W:D (E)", "W:B-W:C (F)", "L:D-L:A (G)",
+			       "L:C-L:B (H)" ],
+			3 => [ "W:E-W:F (Final)", "L:E-L:F", "W:G-W:H",
+			       "L:G-L:H" ],
+		      },
+		      "Two Weeks, 8 Teams" => 
+		      { 1 => [ "1-4 (A)", "2-3 (B)", "5-8 (C)", "6-7 (D)" ], 
+			2 => [ "W:A-W:B (Final)", "L:A-L:B", "W:C-W:D", "L:C-L:D" ],
+		      },
+		    };
 
 # Number of teams supported by schedules.
 my @teamcnt = sort(qw(8 9));
@@ -135,19 +155,14 @@ my @weeks;
 my $matches_per_week = 4;
 
 
+# Parse command line options.
+&parseopts;
+
+
+
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
-my %curmatch;
-for (my $m=1; $m <= $matches_per_week; $m++) {
-  $curmatch{$m}->{HomeScore} = "";
-  $curmatch{$m}->{HomeCoed} = 0;
-  $curmatch{$m}->{HomePoints} = "";
-  $curmatch{$m}->{AwayScore} = "";
-  $curmatch{$m}->{AwayCoed} = 0;
-  $curmatch{$m}->{AwayPoints} = "";
-  $curmatch{$m}->{PointsLabels} = ();
-}
-
+my %curmatch = &init_matches_per_week($matches_per_week);
 my %standings;
 my %season;
 
@@ -155,6 +170,61 @@ my %season;
 # Sort the %standings array (see zero_standings for format) by RANK,
 # W, L, T and maybe more...
 
+#---------------------------------------------------------------------
+sub cleanup_and_exit {
+  my $top = shift;
+  my $game_file = shift;
+
+  if ($NeedSave) {
+	print "We gotta save first dude!\n\n";
+
+	my $text = "You have unsaved changes, do you want to Save and Exit, Exit without Save, or return to editing the	Season?";
+
+	my $dialog = $top->DialogBox(-title => "Unsaved changes!",
+								 -buttons => [ 'Save and Exit', 
+											   'Exit without Save',
+											   'Cancel', ],
+								 -default_button => 'Cancel');
+	$dialog->add('Label', -text => $text, -width => '30');
+
+	my $ok = 1;
+	while ($ok) {
+	  my $answer = $dialog->Show( );
+    
+	  return if ($answer eq "Cancel");
+	  exit if ($answer eq "Exit without Save");
+	  
+	  if ($answer eq "Save and Exit") {
+		&save_game_file_as($top, $game_file,
+						   \%teams,\@matches,\%standings,\%season);
+		exit;
+	  }
+	}
+  }
+  else {
+	exit;
+  }
+}
+
+#---------------------------------------------------------------------
+sub init_matches_per_week {
+
+  # Matches per-week that are played.
+  my $num = shift @_;
+
+  my %t;
+
+  for (my $m=1; $m <= $num; $m++) {
+	$t{$m}->{HomeScore} = "";
+	$t{$m}->{HomeCoed} = 0;
+	$t{$m}->{HomePoints} = "";
+	$t{$m}->{AwayScore} = "";
+	$t{$m}->{AwayCoed} = 0;
+	$t{$m}->{AwayPoints} = "";
+	$t{$m}->{PointsLabels} = ();
+  }
+  return %t;
+}
 #---------------------------------------------------------------------
 sub byweektimefield {
   $a->{Week} <=> $b->{Week} ||
@@ -450,7 +520,7 @@ sub mk_schedule_rpt {
   my $week = shift;
   my $fh = shift;
 
-  print "mk_schedule_rpt($week,FH)\n";
+  print "mk_schedule_rpt($week,$fh)\n";
 
   $week++;
   my $nextweek = $week + 1;
@@ -460,6 +530,7 @@ sub mk_schedule_rpt {
   my ($time, $field, $home,$away);
 
   my $weekdate = &week2date($week);
+  print "  Weekdate = $weekdate ($week)\n";
   my $nextweekdate = &week2date($nextweek);
   my $weekstr = "$teams{$lining{$week}} ($weekdate)";
   my $nextweekstr = "$teams{$lining{$nextweek}} ($nextweekdate)";
@@ -539,13 +610,27 @@ sub mk_key_rpt {
 }
 
 #---------------------------------------------------------------------
-# Make the weekly report.
+# Make the weekly report, save it to a base file name passed in,
+# adding in the date of week in YYYY-MM-DD format, or week-##
+# depending on how called.
 
 sub make_report {
-  my $rptfile = shift;
+  my $base_rpt_file = shift;
+  my $ext = shift;
 
-  if (!open(RPT, ">$rptfile")) {
-    warn "Error writing week $curweek report to $rptfile: $!\n";
+  my $week_date = &week2date($curweek);
+  my $rpt_file = "";
+  if ($ext eq "YYYY-MM-DD") {
+	$rpt_file = "$base_rpt_file". "-$week_date";
+  }
+  elsif ($ext eq "WEEK-##") {
+	$rpt_file = "$base_rpt_file". "-$curweek";
+  }
+
+  $rpt_file = $base_rpt_file . ".rpt";
+
+  if (!open(RPT, ">$rpt_file")) {
+    warn "Error writing week $curweek report to $rpt_file: $!\n";
   }  
   else {
     &mk_results_rpt($curweek,\*RPT);
@@ -556,7 +641,7 @@ sub make_report {
     &mk_key_rpt(\*RPT);
     close RPT;
 
-    print "\nWrote game report to $rptfile.\n";
+    print "\nWrote game report to $rpt_file.\n";
   }
 }
 
@@ -784,6 +869,21 @@ sub del_holiday {
 
   print "del_holiday()\n";
 
+
+}
+
+#---------------------------------------------------------------------
+sub rosters_edit {
+
+}
+
+#---------------------------------------------------------------------
+sub rosters_mk_pdf {
+
+}
+
+#---------------------------------------------------------------------
+sub rosters_show {
 
 }
 
@@ -1448,7 +1548,7 @@ sub load_game_file {
 
 	# Update the rptfile name
 	$rpt_file = $gf;
-	$rpt_file =~ s/\.tks$/\.rpt/;
+	$rpt_file =~ s/\.tks$//;
 
 	# Reset global default game_file
 	$game_file = $gf;
@@ -1493,6 +1593,25 @@ sub save_game_file_as {
 	return $savefile;
   }
   
+}
+
+#---------------------------------------------------------------------
+sub playoffs_setup {
+
+  # Select the number of rounds, 2 or 3
+  # 
+
+}
+
+#---------------------------------------------------------------------
+sub playoffs_score {
+
+
+}
+
+#---------------------------------------------------------------------
+sub playoffs_report {
+
 }
 
 #---------------------------------------------------------------------
@@ -1619,7 +1738,7 @@ sub mkbuttons {
 									-fill => 'both',
 									-expand => 'yes');
   
-  $buttons->Button(-text => 'Quit',-command => sub{exit;},
+  $buttons->Button(-text => 'Quit',-command => sub{ &cleanup_and_quit($top,$game_file)},
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
@@ -1644,12 +1763,27 @@ sub mkbuttons {
   $buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curweek) },
 	)->pack(-side => 'left', -expand =>'yes');
   
-  $buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file) },
+  $buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file,"YYYY-MM-DD") },
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->pack(-side => 'bottom');
 }
 
+#---------------------------------------------------------------------
+sub parseopts {
+
+  #&debug("parseopts()\n");
+
+  GetOptions(
+	'D:i'   => \$DEBUG,
+	'f=s'   => \$game_file,
+	'i'     => \$initialize_season,
+	'h'     => \$prog_help,
+	) or pod2usage(2);
+  pod2usage(2) if ($#ARGV < -1);
+  pod2usage(1) if $prog_help;
+  pod2usage(-exitstatus => 0, -verbose => 2) if $man;
+}
 
 #---------------------------------------------------------------------
 my $top = MainWindow->new;
@@ -1667,8 +1801,11 @@ $top->configure(-menu => $mbar);
 my $season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
 my $match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
 my $penalty=$mbar->cascade(-label=>"~Penalty", -tearoff => 0);
+my $playoffs=$mbar->cascade(-label=>"Playoffs", -tearoff => 0);
+my $rosters=$mbar->cascade(-label=>"Rosters", -tearoff => 0);
 my $help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 
+#---------------------------------------------------------------------
 # Season Menu
 $season->command(-label =>'~New     ', -command=> sub { 
   &init_game_file($top); },
@@ -1696,14 +1833,16 @@ $season->command(-label =>'~Report  ', -command => sub {
   &make_report($rpt_file) },
   );
 $season->separator();
-$season->command(-label =>'~Quit    ', -command=>sub{exit},
+$season->command(-label =>'~Quit    ', -command=>sub{ &cleanup_and_quit($top,$game_file)},
   );
 
+#---------------------------------------------------------------------
 # Match Menu
 $match->command(-label => 'Reschedule', -command => sub {
   &match_reschedule($top,$curweek);},
   );
 
+#---------------------------------------------------------------------
 # Penalty Menu
 $penalty->command(-label => 'Add', -command => sub {
   &penalty_add($top,$curweek);},
@@ -1715,6 +1854,33 @@ $penalty->command(-label => 'Remove', -command => sub {
   &penalty_del($top,$curweek);},
   );
 
+#---------------------------------------------------------------------
+# Playoffs Menu
+$penalty->command(-label => 'Setup', -command => sub {
+  &playoffs_setup($top,$curweek);},
+  );
+$penalty->command(-label => 'Score', -command => sub {
+  &playoffs_score($top,$curweek);},
+  );
+$penalty->command(-label => 'Report', -command => sub {
+  &playoffs_reports($top,$curweek);},
+  );
+
+
+#---------------------------------------------------------------------
+# Rosters Menu
+$rosters->command(-label => 'Edit', -command => sub {
+  &rosters_edit($top,$curweek);},
+  );
+$rosters->command(-label => 'Generate Game Roster', -command => sub {
+  &rosters_mk_pdf($top,$curweek);},
+  );
+$rosters->command(-label => 'Show', -command => sub {
+  &rosters_show($top,$curweek);},
+  );
+
+
+#---------------------------------------------------------------------
 # Help Menu
 $help->command(-label => 'Version');
 $help->separator;
@@ -1739,8 +1905,61 @@ $standingsframe->pack(-side => 'right', -fill => 'y');
 
 $bottomframe->pack(-side => 'top', -fill => 'x');
 
+
 MainLoop;
 
 
 
+
+#---------------------------------------------------------------------
+# Change Log
+#---------------------------------------------------------------------
+#
+# V 1.5 - 2013-03-03
+#
+# - finally started using a changelog
+# - improved report generation to using game date
+
+
+
+
+#---------------------------------------------------------------------
+# POD docs... using pod2usage
+
+__END__
+
+=head1 tk-score
+
+=head1 SYNOPSIS
+
+tk-score [options] 
+
+  Options:
+     -D [#]                debugging
+     -f <file>             which .tks season file to load
+     -h                    this help
+     -i                    initialize a new season.
+     -v                    verbose
+     
+=head1 OPTIONS
+
+=over 8
+
+=item B<-f file>
+
+Tells which .tks file holding a season to load.
+
+=back
+
+=head1 DESCRIPTION
+
+B<tk-score> is a tool to help manage and score a soccer (football)
+league over a season.  
+
+=cut
+
+=head1 AUTHOR
+
+John Stoffel
+john@stoffel.org
 
