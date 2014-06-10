@@ -17,6 +17,7 @@ use IO::Handle;
 use Getopt::Long;
 use List::Util 'shuffle';
 use Pod::Usage;
+use YAML qw(DumpFile LoadFile);
 
 # Non-core Perl modules we require
 my $count = 0;
@@ -27,7 +28,7 @@ foreach my $mod ("Tk", "Tk::BrowseEntry","Tk::DateEntry","Tk::HList","Tk::ItemSt
     $count++;
   }
 }
-die "\nPlease install the above modules before you run this program.\n\n" if $count;
+die "\nPlease install the above modules (from CPAN) to run this program.\n\n" if $count;
 
 # Nice to have modules for making pretty reports.
 my $have_pdf = 1;
@@ -40,15 +41,19 @@ foreach my $mod (qw(PDF::API2 PDF::Table)) {
     $have_pdf = 0;
   }
 }
-warn "\nPlease install the above modules to generate PDF reports.\n\n" if $count;
+warn "\nPlease install the above modules to generate PDF reports.\n" if $count;
 
 
-use YAML qw(DumpFile LoadFile);
+#---------------------------------------------------------------------
+# Defaults and global variables.  
+#---------------------------------------------------------------------
 
-my $VERSION = "v1.6 (2013-04-05)";
+my $VERSION = "v1.7 (2013-05-22)";
+my $gf_version = "v2.0";
 
-my $game_file = "DSL-2012-Outdoor.tks";
-my $rpt_file;
+my $game_file = "";
+my $rpt_file = "new-season.rpt";
+my $do_report = 0;
 
 my $NeedSave = 0;
 
@@ -88,12 +93,13 @@ my $initialize_season = 0;
 # These schedules should be stored in a YAML file somewhere else.
 #---------------------------------------------------------------------
 
-my $dolining = 0;   # Do teams need to line during the season?
+my $dolining = 1;   # Do teams need to line during the season?
 
 # Week 0 is practice if used.  But numbering starts from 1!!!  Data
 # Structure, which should be in an YAML file instead, though this way
 # it works for DSL stuff nicely.  Other leagues might have other
 # needs.  
+my $first_match_scrimmage = 0;
 
 # %sched_template = ( Number_Teams => {
 #                     Week => [game,game,game,game,bye,lining],
@@ -103,7 +109,7 @@ my $dolining = 0;   # Do teams need to line during the season?
 
 my %sched_template = 
   ( 8 => {
-	  0  => [ "1-6", "2-3", "5-8", "4-7", "", "1" ],
+	  0  => [ "1-7", "2-3", "5-8", "4-6", "", "1" ],
 	  1  => [ "1-2", "3-4", "5-6", "7-8", "", "1" ],
 	  2  => [ "5-7", "6-8", "1-3", "2-4", "", "5" ],
 	  3  => [ "4-8", "1-5", "2-6", "3-7", "", "5" ],
@@ -111,17 +117,17 @@ my %sched_template =
 	  5  => [ "3-6", "2-7", "1-8", "4-5", "", "3" ],
 	  6  => [ "1-7", "4-6", "2-8", "3-5", "", "4" ],
 	  7  => [ "4-1", "7-6", "8-5", "3-2", "", "4" ],
-	  8  => [ "6-5", "4-3", "2-1", "8-7", "", "6" ],
-	  9  => [ "7-5", "8-6", "3-1", "4-2", "", "6" ],
-	  10 => [ "8-4", "5-1", "7-3", "6-2", "", "8" ],
-	  11 => [ "8-3", "5-2", "7-4", "6-1", "", "8" ],
-	  12 => [ "6-3", "7-2", "5-4", "8-1", "", "7" ],
-	  13 => [ "6-4", "7-1", "8-2", "5-3", "", "7" ],
-	  14 => [ "3-2", "8-5", "7-6", "4-1", "", "2" ],
-	  15 => [ "Make-up", "Make-up", "Make-up", "Make-up", "", "" ],
-	  16 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
-	  17 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
-	  18 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
+	  8  => [ "8-7", "6-5", "4-3", "2-1", "", "6" ],
+	  9  => [ "4-2", "3-1", "8-6", "7-5", "", "2" ],
+	  10 => [ "7-3", "6-2", "5-1", "8-4", "", "7" ],
+	  11 => [ "6-1", "7-4", "8-3", "5-2", "", "7" ],
+	  12 => [ "5-4", "8-1", "7-2", "6-3", "", "8" ],
+	  13 => [ "5-3", "8-2", "6-4", "7-1", "", "8" ],
+	  14 => [ "2-3", "5-8", "6-7", "1-4", "", "2" ],
+	  15 => [ "Make-up", "Make-up", "Make-up", "Make-up", "", "tbd" ],
+	  16 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  17 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  18 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
     9 => {
 	  1  => [ "3-7", "5-9", "4-6", "2-8", "1", "9" ],
@@ -179,7 +185,8 @@ my @teamcnt = sort(qw(8 9));
 my $max_numteams = $teamcnt[$#teamcnt];
 my $numteams = $teamcnt[0];
 
-my @playoff_rnds = sort(qw(2 3));
+my @playoff_rnds = qw(3 2);
+my @game_times = ("6pm & 7pm", "7pm & 8pm");
 my $playoff_rnd = $playoff_rnds[0];
 
 # Two rounds of games for each team playing every other team.
@@ -189,11 +196,6 @@ my $curweek = 0;
 my $weekdate= "";
 my @weeks;
 my $matches_per_week = 4;
-
-
-# Parse command line options.
-&parseopts;
-
 
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
@@ -211,34 +213,44 @@ sub cleanup_and_exit {
   my $game_file = shift;
 
   if ($NeedSave) {
-	print "We gotta save first dude!\n\n";
-
-	my $text = "You have unsaved changes, do you want to Save and Exit, Exit without Save, or return to editing the	Season?";
-
-	my $dialog = $top->DialogBox(-title => "Unsaved changes!",
-				     -buttons => [ 'Save and Exit', 
-						   'Exit without Save',
-						   'Cancel', ],
-				     -default_button => 'Cancel');
-	$dialog->add('Label', -text => $text, -width => '30');
-	
-	my $ok = 1;
-	while ($ok) {
-	  my $answer = $dialog->Show( );
-	  
-	  return if ($answer eq "Cancel");
-	  exit if ($answer eq "Exit without Save");
-	  
-	  if ($answer eq "Save and Exit") {
-	    &save_game_file_as($top, $game_file,
-			       \@teams,\@matches,\%standings,\%season);
-	    exit;
-	  }
-	}
+    print "We gotta save first dude!\n\n";
+    
+    my $text = "You have unsaved changes, do you want to Save and Exit, Exit without Save, or return to editing the	Season?";
+    
+    my $dialog = $top->DialogBox(-title => "Unsaved changes!",
+				 -buttons => [ 'Save and Exit', 
+					       'Exit without Save',
+					       'Cancel', ],
+				 -default_button => 'Cancel');
+    $dialog->add('Label', -text => $text, -width => '30');
+    
+    my $ok = 1;
+    while ($ok) {
+      my $answer = $dialog->Show( );
+      
+      return if ($answer eq "Cancel");
+      &do_exit($dialog,$top) if ($answer eq "Exit without Save");
+      
+      if ($answer eq "Save and Exit") {
+	&save_game_file_as($top, $game_file,
+			   \@teams,\@matches,\%standings,\%season);
+	&do_exit($dialog,$top);
       }
-  else {
-    exit;
+    }
   }
+  else {
+    &do_exit($top);
+  }
+}
+
+
+#---------------------------------------------------------------------
+sub do_exit {
+
+  foreach my $top (@_) {
+    $top->destroy;
+  }
+  &Tk::exit;
 }
 
 #---------------------------------------------------------------------
@@ -272,9 +284,9 @@ sub byweektimefield {
 sub updateweekdates {
   my $old = shift;
   my $new = shift;
-
+  
   print "updateweekdates(\"$old\",\"$new\")\n";
-
+  
   my %dates;
   my $found=0;
   foreach my $match (sort byweektimefield @matches) {
@@ -283,6 +295,7 @@ sub updateweekdates {
     }
     elsif ($match->{"Date"} eq $old) {
       $match->{"Date"} = "$new ($old)";
+      $match->{"DateOrig"} = "$old";
       print "  match->{Date} = ", $match->{Date}, "\n";
       $found++;
     }
@@ -299,11 +312,11 @@ sub week2date {
   my $w = shift;
 
   foreach my $match (sort byweektimefield @matches) {
-        if ($match->{"Week"} == $w) {
-          my $d = $match->{Date};
-          #print "Week = $w, Date = $d\n";
-          return $d;
-        }
+    if ($match->{"Week"} == $w) {
+      my $d = $match->{Date};
+      #print "Week = $w, Date = $d\n";
+      return $d;
+    }
   }
 }
 
@@ -398,10 +411,9 @@ sub match_reschedule {
   my $dialog = $top->DialogBox(-title => "Reschedule Match Date",
                                -buttons => [ 'Ok', 'Cancel' ],
                                -default_button => 'Ok');
-  $dialog->add('Label', -text => "Old Date: $old_date", -width => 10,)->pack;
-  $dialog->add('LabEntry', -textvariable => \$new_date, -width => 10, 
-               -label => 'New Date (MM/DD/YYYY)', 
-               -labelPack => [-side => 'left'])->pack;
+  $dialog->add('Label', -text => "Old Date: $old_date")->pack(-side => 'top');
+  $dialog->add('Label', -text => "New Date (MM/DD/YYYY)")->pack(-side => 'left');
+  $dialog->add('DateEntry', -textvariable => \$new_date, -width => 10)->pack(-side => 'left');
   
   my $ok = 1;
   while ($ok) {
@@ -415,14 +427,15 @@ sub match_reschedule {
       }
       else {
         $top->messageBox(
-		  -title => "Error!  Bad Date format.",
-		  -message => "Error!  Bad Date format, please use MM/DD/YYYY.",
-		  -type => 'Ok',
+			 -title => "Error!  Bad Date format.",
+			 -message => "Error!  Bad Date format, please use MM/DD/YYYY.",
+			 -type => 'Ok',
                         );
       }
     }
     elsif ($answer eq "Cancel") {
       print "No update made.\n";
+      $ok--;
     }
   }
 }
@@ -551,6 +564,7 @@ sub mk_notes {
 }
 
 #---------------------------------------------------------------------
+# TODO - fix game start time in reports
 sub mk_schedule_rpt {
   my $week = shift;
   my $fh = shift;
@@ -569,8 +583,8 @@ sub mk_schedule_rpt {
   my $nextweekdate = &week2date($nextweek);
   
   # TODO: Fix lookup of who is lining (if any) fields
-  my $line_this_week = $lining_team{$week};
-  my $line_next_week = $lining_team{$nextweek};
+  my $line_this_week = $lining_team{$week} || "<unknown>";
+  my $line_next_week = $lining_team{$nextweek} || "<unknown>";
 
 format SCHEDULE_TOP = 
 
@@ -615,11 +629,12 @@ format LINING =
 .
 
   if ($dolining) {
-	$fh->format_name("LINING");
-	$fh->format_top_name("LINING_TOP");
-	$fh->autoflush(1);
-	$fh->format_lines_left(0);
-	write $fh;
+    print "Showing Lining in report...\n";
+    $fh->format_name("LINING");
+    $fh->format_top_name("LINING_TOP");
+    $fh->autoflush(1);
+    $fh->format_lines_left(0);
+    write $fh;
   }
 }
 
@@ -655,16 +670,24 @@ sub make_report {
   my $base_rpt_file = shift;
   my $ext = shift;
 
-  my $week_date = &week2date($curweek);
-  my $file = "";
+  print "make_report($base_rpt_file , $ext)\n";
+
+  # Strip off .rpt if it exists.
+  $base_rpt_file =~ s/\.rpt$//;
+
+  my $week_date;
+  my $file = "$base_rpt_file";
   if ($ext eq "YYYY-MM-DD") {
-    $file = "$base_rpt_file". "-$week_date";
+    my ($m,$d,$y) = split('/',&week2date($curweek));
+    $file = $base_rpt_file . "-". sprintf("%04s-%02s-%02s",$y,$m,$d);
+    print "  ext = YYYY-MM-DD, file = $file\n";
   }
   elsif ($ext eq "WEEK-##") {
     $file = "$base_rpt_file". "-$curweek";
+    print "  ext = WEEK-##, file = $file\n";
   }
   
-  $file = $base_rpt_file . ".rpt";
+  $file .= ".rpt";
   
   if (!open(RPT, ">$file")) {
     warn "Error writing week $curweek report to $file: $!\n";
@@ -729,7 +752,7 @@ sub inc_by_week {
   #print " inc_by_week($y/$m/$d) + 7d = ";
   ($y,$m,$d) = Add_Delta_Days($y,$m,$d,7);
   #print "  ($y/$m/$d)\n";
-  $cur = "$m/$d/$y";
+  $cur = sprintf("%02s/%02s/%4s",$m,$d,$y);
   return $cur;
 }
 
@@ -793,19 +816,21 @@ sub generate_schedule {
   my $season = $$season_ref;
   my $start_date_ref = shift @_;
   my $start_date = $$start_date_ref;
+  my $game_time_ref = shift @_;
+  my $game_time = $$game_time_ref;
   my $practice = shift @_;
-  my $lining = shift @_;
+  my $do_lining = shift @_;
   my $hlb_ref = shift @_;
   my $hlb = $$hlb_ref;
   my $done_but_ref = shift @_;
   my $done_but = $$done_but_ref;
-
+  
   # Validate inputs.  Should be in the Setup a New Season window, with
   # the 'Done' button disabled until all the required info is entered.
   
   print "Start Date: $start_date\n";
   if (&validate($num,$start_date,$season,$teamsref)) {
-
+    
     my $n=1;
     foreach my $e (@team_entry) {
       my $g = $e->get;
@@ -814,7 +839,7 @@ sub generate_schedule {
 	$teams[$n++] = $g;
       }
     }
-
+    
     # Get holidays, if any, to be skipped.
     my $hlb_cnt = $hlb->size;
     my @hols = $hlb->get(0,$hlb_cnt);
@@ -832,14 +857,22 @@ sub generate_schedule {
     while (&check_holidays($cur_date, @hols)) {
       $cur_date = &inc_by_week($cur_date);
     }
-    
+    # Store Season Setup options
+    $season{Lining} = $do_lining;
+    $season{Description} = "Description";
+    $season{Scrimmage} = $practice;
+    $season{Playoff_Rounds} = "";
+    $season{Number_Teams} = $num;
+
     # Initialize Matches array:
     print "Num teams = $num\n";
     my %template = %{$sched_template{$num}};
 
-    # Actual week in schedule, template starts at zero for warmup
+    # Actual week in schedule, template starts at zero for scrimmage
     # week, which is not scored, but is scheduled.  
     my $sched_week = 1;
+    $sched_week = 0 if $first_match_scrimmage;
+    
     foreach my $tmpl_wk (sort { $a <=> $b } keys %template) {
       next if ($tmpl_wk == 0 && $practice == 0);
       my @week_sched = @{$template{$tmpl_wk}};
@@ -851,14 +884,26 @@ sub generate_schedule {
       # byes[5] and lining[6].  This is ugly and I should just change
       # the data structure.  TODO
       
-      my $is_lining = pop @week_sched;
-      $lining_team{$week} = $teams[$is_lining];
-      $bye_team{$week} = "";
+      $lining_team{$week} = "";
+      if ($do_lining) {
+	$dolining = 1;
+	my $is_lining = pop @week_sched;
+	if ($is_lining ne "") {
+	  $lining_team{$week} = $teams[$is_lining];
+	}else {
+	  $lining_team{$week} = "tbd";
+	}
+      }
+      $bye_team{$week} = "" || "tbd";
       my $has_bye = pop @week_sched;
       if ($has_bye =~ m/^\d+$/) {
 	$bye_team{$week} = $teams[$has_bye];
       }
       
+      # What is our game start times?
+      my($first_game_time,$second_game_time) = split(' & ', $game_time);
+      
+      # Now fill in the schedule for games this week.
       my $i = 0;
       my $game;
       print "Week: $sched_week : ";
@@ -882,17 +927,17 @@ sub generate_schedule {
 	  $game->{AwayPoints} = 0;
 	  $game->{Complete} = 0;
 	  
-	  # Template assumes two games a 7pm, then two at 8pm, 
-	  # using Fields 1 & 2 in that order.
+	  # Template assumes two games at 7pm, then
+	  # two at 8pm, using Fields 1 & 2, in that order. 
 	  if ($i == 0 || $i == 2) {
 	    $game->{Field} = "Field 1";
 	  } else {
 	    $game->{Field} = "Field 2";
 	  }
 	  if ($i == 0 || $i == 1) {
-	    $game->{Time} = "7pm";
+	    $game->{Time} = $first_game_time;
 	  } else {
-	    $game->{Time} = "8pm";
+	    $game->{Time} = $second_game_time;
 	  }
 	  $i++; 
 	  push @matches, $game;
@@ -910,22 +955,23 @@ sub generate_schedule {
     # Need to put in a message box here which enables the 'Done'
     # button if it's all ok.  
     $done_but->configure(-state => 'normal');
-    
-    my $dialog = $win->DialogBox(-title => 'Accept this new Season?',
-				 -buttons => [ qw(Yes No) ],
-				);
-    my $ans = $dialog->Show();
-	
-    if ($ans eq "Yes") {
-      # Now update all the global stuff and displays....
-      &load_datelist($match_datelist);
-      &load_curmatch(1);
-      &update_standings(1);
-    }
-    else {
-      print "Try again please...\n\n";
-    }
   }
+}
+
+#---------------------------------------------------------------------
+# This is where you hit the Done button once the generate_schedule()
+# is finished it's work.
+
+sub accept_schedule {
+
+  my $top = shift;
+  my $win = shift;
+  my $desc = shift;
+  $top->configure(title => $desc);
+  $win->destroy;
+  &load_datelist($match_datelist);
+  &load_curmatch(1);
+  &update_standings(1);
 }
 
 #---------------------------------------------------------------------
@@ -973,6 +1019,11 @@ sub rosters_show {
 }
 
 #---------------------------------------------------------------------
+sub edit_season {
+  
+}
+
+#---------------------------------------------------------------------
 # Piss poor function name, FIXME.  
 
 sub init_game_file {
@@ -981,11 +1032,15 @@ sub init_game_file {
   my $widget;
   print "init_game_file()\n";
 
-  my $first_match_practice = 0;
+  my $game_time = $game_times[0];
+  my $first_match_scrimmage = 0;
   my $teams_line_fields = 0;
   my $start_date = "";
   my $descrip = "";
-  
+
+  # Reset to nothing, since it's a new season.
+  $game_file = "";
+
   my $win = MainWindow->new();
   $win->title("Setup a new Season");
   $win->configure(-height => 400,
@@ -1024,8 +1079,14 @@ sub init_game_file {
 			 -choices => \@playoff_rnds,
 			)->pack(-side => 'top');
   
-  $setup_fr->Checkbutton(-variable => \$first_match_practice,
-			 -text => "First Match for Practice? ",
+  $setup_fr->BrowseEntry(-label => 'Game Times',
+			 -variable => \$game_time,
+			 -width => 12,
+			 -choices => \@game_times,
+			)->pack(-side => 'top');
+  
+  $setup_fr->Checkbutton(-variable => \$first_match_scrimmage,
+			 -text => "First Match for Scrimmage? ",
 			)->pack(-side => 'top', -fill => 'x');
   
   $setup_fr->Checkbutton(-variable => \$teams_line_fields,
@@ -1124,13 +1185,14 @@ sub init_game_file {
   
   my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
   my $done_but = $but_fr->Button(-text => "Done", -state => 'disabled',
-							 -command => [ $win => 'destroy' ]	);
+				 -command => [ \&accept_schedule, $top, $win, \$descrip ]
+				);
   
   my $gen_but = $but_fr->Button(-text => "Generate Schedule", 
 				-command =>  [
 					      \&generate_schedule, $win, \$numteams,
 					      \@entries, \$descrip, \$start_date,
-					      \$first_match_practice,
+					      \$game_time, \$first_match_scrimmage,
 					      \$teams_line_fields, \$hlb, \$done_but ] 
 			       );
   
@@ -1150,16 +1212,17 @@ sub init_game_file {
 #---------------------------------------------------------------------
 # Accessor for date info stored in each match.  Returns and array of
 # date(s) for all matches, sorted by weeknumber.  
-sub weekanddate {
+sub get_match_dates {
   my %w;
   my @t;
   
+  print " get_match_dates()\n";
   foreach my $m (sort byweektimefield @matches) {
     $w{$m->{'Week'}} = $m->{'Date'};
   }
   
   foreach (sort keys %w) {
-    push @t, [ $_, $w{$_} ];
+    push @t, [ $_, $w{$_}, '          ' ];
   }
 
   # Sort before we return... not an ideal data structure, should be a
@@ -1191,11 +1254,12 @@ sub load_datelist {
   $dls_green = $hl->ItemStyle('text', -foreground => 'green', -anchor=>'w'); 
   $dls_done = $hl->ItemStyle('text', -background => 'lightgreen');
   
-  foreach my $key (&weekanddate) {
+  foreach my $key (&get_match_dates) {
+    print "  get_match_dates: $key\n";
     my $e = $hl->addchild("");
     $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
     $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
-    $hl->itemCreate($e, 2, -itemtype=>'text', -text => "          ", -style=>$dls_blue); 
+    $hl->itemCreate($e, 2, -itemtype=>'text', -text => $key->[2], -style=>$dls_blue); 
     $hl->itemCreate($e, 3, -itemtype=>'text', -text => " ", -style=>$dls_blue); 
   }
 }
@@ -1206,7 +1270,7 @@ sub init_datelist {
   print "init_datelist()\n";
 
   my $hl = $top->Scrolled('HList', -scrollbars => 'ow',
-                          -columns=>4, -header => 1, 
+                          -columns=> 4, -header => 1, 
 			  -selectmode => 'single', -width => 46,
                          )->pack(-fill => 'x'); 
   $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
@@ -1490,8 +1554,8 @@ sub update_scores {
     # Reset the Current Week finally.
     $curweek = $week;
     &update_standings($curweek);
-	# Require a save if we're exiting...
-	$NeedSave = 1;
+    # Require a save if we're exiting...
+    $NeedSave = 0;
   }
 }
 
@@ -1506,22 +1570,22 @@ sub init_scores {
   
   # Week dropdown and dates, getting rid of them...
   if (0) {
-	$header->BrowseEntry(-label => 'Week:', -variable => \$week, 
-						 -width => 2,
-						 -choices => \@weeks,
-						 -command => sub { &update_scores($week); },
-	  )->pack(-side => 'left');
-	
-	$weekdate=join("-",&week2date($week));
-	print "Weekdate = $weekdate\n";
-	$header->Label(-text => "Date: ", -width => 30, 
-				   -anchor => 'e')->pack(-side=>'left');
-	$header->Label(-textvariable => \$weekdate,
-				   -width => 12)->pack(-side=>'left');
-	
-	$header->pack(-side => 'top', -fill => 'x');
+    $header->BrowseEntry(-label => 'Week:', -variable => \$week, 
+			 -width => 2,
+			 -choices => \@weeks,
+			 -command => sub { &update_scores($week); },
+			)->pack(-side => 'left');
+    
+    $weekdate=join("-",&week2date($week));
+    print "Weekdate = $weekdate\n";
+    $header->Label(-text => "Date: ", -width => 30, 
+		   -anchor => 'e')->pack(-side=>'left');
+    $header->Label(-textvariable => \$weekdate,
+		   -width => 12)->pack(-side=>'left');
+    
+    $header->pack(-side => 'top', -fill => 'x');
   }
-
+  
   # Headers
   
   $hf->Label(-text => "Time", -width => 6)->pack(-side => 'left');
@@ -1543,12 +1607,12 @@ sub init_scores {
   
   foreach (my $m=1; $m <= $matches_per_week; $m++) {
     my $f = $top->Frame;
-	my $w;
-	
+    my $w;
+    
     $f->Label(-textvariable => \$curmatch{$m}->{"Time"}, -width => 6)->pack(-side => 'left');
     $f->Label(-textvariable => \$curmatch{$m}->{"Field"}, -width => 8)->pack(-side => 'left');
     $f->Label(-textvariable => \$curmatch{$m}->{HomeName}, -anchor =>
-			  'w', -width => 20)->pack(-side => 'left');
+	      'w', -width => 20)->pack(-side => 'left');
     $f->BrowseEntry(-label => 'Score',
 		    -variable => \$curmatch{$m}->{"HomeScore"},	
 		    -width => 3,
@@ -1609,10 +1673,39 @@ sub chgcolor {
 
 #---------------------------------------------------------------------
 sub load_game_file {
-  my $top = shift;
   my $file = shift;
 
-  print "Read data from $file\n";
+  if (-f $file) {
+    my $data = LoadFile($file);
+    
+    # Needs better error checking here!  We really only need the list
+    # of teams and the matches to rebuild every thing else we use. 
+
+    @teams = @{$data->{Teams}};
+    @matches = @{$data->{Matches}};
+
+    # Update the week display maybe?
+    &load_datelist($match_datelist);
+    &load_curmatch(1);
+    &update_standings(1);
+    
+    # Update the rptfile name
+    $rpt_file = $file;
+    $rpt_file =~ s/\.tks$//;
+    
+    # Reset global default game_file
+    $game_file = $file;
+
+    return 1;
+  }
+  # Error, no file to load or some other error.  Needs Cleanup.
+  return 0;
+}
+
+#---------------------------------------------------------------------
+sub select_game_file {
+  my $top = shift;
+  my $file = shift;
 
   my $fs = $top->FileSelect(-directory => ".",
 			    -filter => "*.tks",
@@ -1620,51 +1713,18 @@ sub load_game_file {
 			   );
   
   $fs->geometry("600x400");
-
+  
   my $gf = $fs->Show;
-
-  if ($gf ne "") {
-    my ($teamref,$matchref,$standingsref,$seasonref) = LoadFile($gf);
-    
-	# Needs better error checking here!
-
-    # Reload Teams
-    foreach my $i (@$teamref) {
-      $teams[$i] = $$teamref{$i};
-      print "  $i = $$teamref{$i}\n";
-    }
-
-    # Reload Matches
-    @matches = @$matchref;
-
-    # Update the week display maybe?
-    &load_datelist($match_datelist);
-    
-    &load_curmatch(1);
-    &update_standings(1);
-
-	# Update the rptfile name
-	$rpt_file = $gf;
-	$rpt_file =~ s/\.tks$//;
-
-	# Reset global default game_file
-	$game_file = $gf;
+  
+  if (&load_game_file($gf)) {
+    # Reset window Title to game_file
+    $top->configure(title => $game_file);
+  }
+  else {
+    print "Error loading.  Look in select_game_file()\n";
   }
 }
-
-#---------------------------------------------------------------------
-sub save_game_file {
-  my $top = shift;
-  my $gf = shift;
-  my $teamref = shift;
-  my $matchref = shift;
-  my $standingsref = shift;
-  my $seasonref = shift;
-
-  print "DumpFile($gf, .... )\n";
-  DumpFile($gf,$teamref,$matchref,$standingsref,$seasonref);
-}
-
+  
 #---------------------------------------------------------------------
 sub save_game_file_as {
   my $top = shift;
@@ -1674,26 +1734,75 @@ sub save_game_file_as {
   my $standingsref = shift;
   my $seasonref = shift;
 
+  print "($gf, .... )\n";
+  $gf = "new-season.tks"  if ($gf eq "");
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
 			    -initialfile => $game_file,
-			   );
+	);
   $fs->geometry("600x400");
   my $savefile = $fs->Show;
-  
-  if ($savefile eq "") {
 
+  if ($savefile eq "") {
+    
     print "Not saving the file...\n";
     return $gf;
   }
   else {
-    save_game_file($top,$savefile,$teamref,$matchref,$standingsref,$seasonref);
-
-    # Update our base report file name
-    $rpt_file = $savefile;
-    $rpt_file =~ s/\.tks$//;
-    return $savefile;
+    if (!($savefile =~ m/^.*\.tks$/)) {
+      $savefile .= ".tks";
+    }  
+    
+    if (write_game_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
+      # Update our base report file name
+      $rpt_file = $savefile;
+      $rpt_file =~ s/\.tks$//;
+      $top->configure(title => $gf);
+      return $savefile;
+    }
+    else {
+      return undef;
+    }
   }
+}
+#---------------------------------------------------------------------
+# double check we've got a valid game file to save to first...
+sub save_game_file {
+  my $top = shift;
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+  my $seasonref = shift;
+
+  print "save_game_file($gf, .... )\n";
+  if ($gf eq "") {
+	&save_game_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
+  }
+  else {
+	&write_game_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+  }	
+}
+
+#---------------------------------------------------------------------
+sub write_game_file {
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+  my $seasonref = shift;
+
+  my $data = { Teams => $teamref,
+	       Matches => $matchref,
+	       Standings => $standingsref,
+	       Season => $seasonref,
+	       Version => $gf_version,
+	     };
+  
+  print "DumpFile($gf, .... )\n";
+
+  DumpFile($gf,$data);
+  $NeedSave = 0;
 }
 
 #---------------------------------------------------------------------
@@ -1844,7 +1953,7 @@ sub mkbuttons {
   
   $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
   
-  $buttons->Button(-text => 'Load',-command => sub { &load_game_file($top,$game_file); },
+  $buttons->Button(-text => 'Load',-command => sub { &select_game_file($top,$game_file); },
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save',-command => sub { 
@@ -1870,6 +1979,7 @@ sub mkbuttons {
   $buttons->pack(-side => 'bottom');
 
 }
+
 
 #---------------------------------------------------------------------
 sub roster_email_pdf {
@@ -1910,7 +2020,7 @@ sub roster_mk_pdf {
   $header->font($font, 20);
   $header->translate(20,750);
   $header->text("Digital Soccer League - 2013 Outdoor Season");
-
+  
   $header->translate(20,715);
   $header->text("Game Roster: $team");
   
@@ -1986,16 +2096,23 @@ sub roster_mk_pdf {
 }
 
 #---------------------------------------------------------------------
+sub schedule_view {
+
+
+}
+
+#---------------------------------------------------------------------
 sub parseopts {
 
   #&debug("parseopts()\n");
 
   GetOptions(
-	'D:i'   => \$DEBUG,
-	'f=s'   => \$game_file,
-	'i'     => \$initialize_season,
-	'h'     => \$prog_help,
-	) or pod2usage(2);
+	     'D:i'   => \$DEBUG,
+	     'f=s'   => \$game_file,
+	     'i'     => \$initialize_season,
+	     'h'     => \$prog_help,
+	     'r'     => \$do_report,
+	    ) or pod2usage(2);
   pod2usage(2) if ($#ARGV < -1);
   pod2usage(1) if $prog_help;
   pod2usage(-exitstatus => 0, -verbose => 2) if $man;
@@ -2006,18 +2123,29 @@ $rpt_file = $game_file;
 $rpt_file =~ s/\.tks$//;
 
 
+#---------------------------------------------------------------------
+# If asked to generate a report, don't setup the windows at all.  
+#---------------------------------------------------------------------
 
+# Parse command line options.
+&parseopts;
+
+if ($do_report && $game_file) {
+  &load_game_file($game_file);
+  &make_report();
+  &Tk::exit;
+}
 
 #---------------------------------------------------------------------
 # MAIN SETUP, turn into a function someday!
 #---------------------------------------------------------------------
 my $top = MainWindow->new;
-$top->configure(-title => 'Soccer Scoring',
+$top->configure(-title => "No game file loaded",
                 -height => 400,
                 -width => 1000,
                 -background => 'white',
                );
-$top->geometry('-100-100');
+$top->geometry('-300-300');
 $top->optionAdd('*font', 'Helvetica 9');
 
 # Menu Bar of commands
@@ -2034,33 +2162,34 @@ my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 
 #---------------------------------------------------------------------
 # Season Menu
-$m_season->command(-label =>'~New     ', -command=> sub { 
+$m_season->command(-label => '~New     ', -command => sub { 
 		     &init_game_file($top); },
 		  );
-$m_season->command(-label =>'~Open    ', -command=> sub {
-		     &load_game_file($top,$game_file);
+$m_season->command(-label => '~Open    ', -command => sub {
+		     &select_game_file($top,$game_file);
 		   },
 		  );
-$m_season->command(-label =>'~Save    ', -command=> sub { 
+$m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
+$m_season->command(-label => '~Save    ', -command => sub { 
 		     &save_curmatch($curweek);
 		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  );
-$m_season->command(-label =>'~Save As ', -command=> sub { 
+$m_season->command(-label => '~Save As ', -command => sub { 
 		     &save_curmatch($curweek);
 		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 			   },
   );
 $m_season->separator();
-$m_season->command(-label =>'~Update Standings', -command => sub {
+$m_season->command(-label => '~Update Standings', -command => sub {
 		     &update_standings($curweek) },
 		  );
 $m_season->separator();
-$m_season->command(-label =>'~Report  ', -command => sub {
-		     &make_report($rpt_file) },
+$m_season->command(-label => '~Report  ', -command => sub {
+		     &make_report($rpt_file,"YYYY-MM-DD") },
 		  );
 $m_season->separator();
-$m_season->command(-label =>'~Quit    ', -command=>sub{ &cleanup_and_exit($top,$game_file)},
+$m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($top,$game_file)},
   );
 
 #---------------------------------------------------------------------
