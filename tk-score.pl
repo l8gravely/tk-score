@@ -2,6 +2,7 @@
 
 use strict;
 use Tk;
+use Tk::DialogBox;
 use Tk::BrowseEntry;
 use Tk::FileSelect;
 use YAML qw(DumpFile LoadFile);
@@ -10,6 +11,8 @@ use IO::Handle;
 my $game_file = "DSL-2012-Outdoor.tks";
 my $rpt_file = $game_file;
 $rpt_file =~ s/\.tks$/\.rpt/;
+
+my $NeedSave = 0;
 
 # Flush all output right away...
 $|=1;
@@ -46,6 +49,40 @@ my %lining = ( 1  => 1,
 			   14 => 2, 15 => 2,
 			   16 => "tbd", 17 => "tdb",
   );
+
+my %sched_eight_teams = ( );
+my %sched_nine_teams = ( );
+
+#---------------------------------------------------------------------
+# Don't be stupid, just pre-figure out an 8 or 9 team season schedule
+# and stick with it, making changes as needed.  Sigh... 
+#
+sub init_season {
+  my $n_teams;
+  my $n_playoffs = shift;
+  my $n_makeups = shift;
+  my $overlap_m_p = shift;
+  my $n_preseason = shift;
+  my $lining = shift;
+
+  print "init_season($n_teams,$n_playoffs,$n_makeups,$overlap_m_p,$n_preseason,$lining)\n";
+
+  my @m;
+  
+  my $n_weeks = ($n_teams - 1) * 2;
+  # Odd number of teams requires bye weeks
+  my $need_byes = $n_teams % 2;
+
+  my $total_weeks = $n_weeks + $n_playoffs + $n_makeups - $overlap_m_p;
+
+  print "Num weeks of games = $n_weeks\n";
+  print "Total weeks = $total_weeks\n";
+
+  for (my $week = 1; $week <= ($n_weeks + $n_playoffs); $week++) {
+	print "  $week\n";
+  }
+  return @m;
+}
 
 # This should be stored in a YAML file.
 my @matches = ( 
@@ -887,15 +924,77 @@ sub byweektimefield {
 }
 
 #---------------------------------------------------------------------
+sub updateweekdates {
+  my $old = shift;
+  my $new = shift;
+
+  print "updateweekdates($old,$new)\n";
+
+  my %dates;
+  my $found=0;
+  foreach my $match (sort byweektimefield @matches) {
+	if ($match->{"Date"} eq $old) {
+	  $match->{"Date"} = "$new ($old)";
+	  print "  match->{Date} = ", $match->{Date}, "\n";
+	  $found++;
+	}
+  }
+  return $found;
+}
+
+#---------------------------------------------------------------------
 sub getweekdates {
   my $w = shift;
 
-  my %dates;
   foreach my $match (sort byweektimefield @matches) {
 	if ($match->{"Week"} == $w) {
 	  my $d = $match->{Date};
 	  #print "Week = $w, Date = $d\n";
 	  return $d;
+	}
+  }
+}
+
+#---------------------------------------------------------------------
+# Change the date of a match
+
+sub match_reschedule {
+  my $top = shift;
+  my $w = shift;
+
+  print "match_reschedule($w)\n";
+  
+  my $old_date = &getweekdates($w);
+  my $new_date = "";
+
+  my $dialog = $top->DialogBox(-title => "Reschedule Match Date",
+							   -buttons => [ 'Ok', 'Cancel' ],
+							   -default_button => 'Ok');
+  $dialog->add('Label', -text => "Old Date: $old_date", -width => 10,)->pack;
+  $dialog->add('LabEntry', -textvariable => \$new_date, -width => 10, 
+			   -label => 'New Date (MM/DD/YYYY)', 
+			   -labelPack => [-side => 'left'])->pack;
+
+  my $ok = 1;
+  while ($ok) {
+	my $answer = $dialog->Show( );
+	
+	if ($answer eq "Ok") {
+	  print "New Date = $new_date\n";
+	  if ($new_date =~ m/^\d\d\/\d\d\/\d\d\d\d$/) {
+		$ok--;
+		my $num_matches = &updateweekdates($old_date,$new_date);
+	  }
+	  else {
+		$top->messageBox(
+		  -title => "Error!  Bad Date format.",
+		  -message => "Error!  Bad Date format, please use MM/DD/YYYY.",
+		  -type => 'Ok',
+		  );
+	  }
+	}
+	elsif ($answer eq "Cancel") {
+	  print "No update made.\n";
 	}
   }
 }
@@ -915,14 +1014,14 @@ sub mk_results_rpt {
 
 format RESULTS_TOP =
 
- Results:  Week @<<<<<<<<<<<<<<<<<<<<<<<
+  Results:  Week @<<<<<<<<<<<<<<<<<<<<<<<
                 $ws
 
 .
 
 format RESULTS =
-    @<<<<<<<<<<<<<<<<<  @>  @<<<   vs  @<<<<<<<<<<<<<<<<<  @>  @<<<
-    $h,                 $hs,$hc,       $a,                 $as,$ac
+      @<<<<<<<<<<<<<<<<<  @>  @<<<   vs  @<<<<<<<<<<<<<<<<<  @>  @<<<
+	  $h,                 $hs,$hc,       $a,                 $as,$ac
 .
   
 
@@ -959,12 +1058,12 @@ format STANDINGS_TOP =
   Standings after Week @<<<<<<<<<<<<<<<<
                        $d                       
 
-    # Team               W   T   L   F   C   GF   GA  Pts
-    - ----------------- --- --- --- --- --- ---  ---  ----
+      # Team               W   T   L   F   C   GF   GA  Pts
+      - ----------------- --- --- --- --- --- ---  ---  ----
 .
 
 format STANDINGS =
-    @ @<<<<<<<<<<<<<<<< @>> @>> @>> @>> @>> @>>  @>>  @>>>
+      @ @<<<<<<<<<<<<<<<< @>> @>> @>> @>> @>> @>>  @>>  @>>>
     $n,$team,           $w, $t, $l, $f, $c, $gf, $ga, $pts
 .
 
@@ -1024,16 +1123,16 @@ sub mk_schedule_rpt {
 
 format SCHEDULE_TOP = 
 
-   Schedule: @<<<<<<<<<<<<<<
+  Schedule: @<<<<<<<<<<<<<<
              $weekdate
 
-   Time    Field      Home                   Away
-   ------  -------    ------------------     ------------------
+      Time    Field      Home                   Away
+      ------  -------    ------------------     ------------------
 .
 
 format SCHEDULE =
-   @<<<<<  @<<<<<<    @<<<<<<<<<<<<<<<<<     @<<<<<<<<<<<<<<<<<
-   $time,  $field,    $home,                 $away
+      @<<<<<  @<<<<<<    @<<<<<<<<<<<<<<<<<     @<<<<<<<<<<<<<<<<<
+      $time,  $field,    $home,                 $away
 .
 
   $fh->format_name("SCHEDULE");
@@ -1055,10 +1154,10 @@ format LINING_TOP =
 .
 
 format LINING =
-       Lining:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-	        $weekstr;
-                @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                $nextweekstr
+  Lining:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           $weekstr;
+           @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           $nextweekstr
 
 
 .
@@ -1115,6 +1214,14 @@ sub make_report {
   }
 }
    
+#---------------------------------------------------------------------
+sub init_game_file {
+  my $top = shift;
+
+  print "init_game_file()\n";
+  print "  Not implemented yet.\n";
+}
+
 #---------------------------------------------------------------------
 sub init_standings {
   my $top = shift;
@@ -1190,11 +1297,10 @@ sub update_standings {
 
   # Zero out the standings first
   &zero_standings(\%standings);
+  &zero_standings(\%tmp);
 
   # Save the current week data back to @matches
   &save_curmatch($curweek);
-
-  &zero_standings(\%tmp);
 
   # Now go through all matches and figure out standings.
   foreach my $m (sort byweektimefield @matches) {
@@ -1306,12 +1412,35 @@ sub save_curmatch {
 }
 
 #---------------------------------------------------------------------
+sub clear_match_display {
+
+  # Empty the Home and Away columns first, we have four matches per-week.
+  for (my $i=1; $i <= $matches_per_week; $i++) {
+	$curmatch{$i}->{"HomePoints"} = 0;
+	$curmatch{$i}->{"HomeScore"} = 0;
+	$curmatch{$i}->{"HomeCoed"} = 0;
+	$curmatch{$i}->{"HomeName"} = "";
+	$curmatch{$i}->{"AwayPoints"} = 0;
+	$curmatch{$i}->{"AwayScore"} = 0;
+	$curmatch{$i}->{"AwayCoed"} = 0;
+	$curmatch{$i}->{"AwayName"} = "";
+
+	$curmatch{$i}->{"Time"} = "";
+	$curmatch{$i}->{"Field"} = "";
+	$curmatch{$i}->{"Complete"} = 0;
+	&chgcolor($notokcolor,$i);
+  }
+}
+
+#---------------------------------------------------------------------
 # Load the current match with data week $week
 
 sub load_curmatch {
   my $week = shift;
+  
+  &clear_match_display;
 
-  # Fill in the $curmatches with the proper match info
+# Fill in the $curmatches with the proper match info
   my $curidx = 1;
   foreach my $m (sort byweektimefield @matches) {
     if ($m->{"Week"} == $week) {
@@ -1330,10 +1459,10 @@ sub load_curmatch {
       $curmatch{$curidx}->{"Complete"} = $m->{"Complete"};
       
       if ($m->{"Complete"}) {
-	&chgcolor($okcolor,$curidx);
+		&chgcolor($okcolor,$curidx);
       } 
       else {
-	&chgcolor($notokcolor,$curidx);
+		&chgcolor($notokcolor,$curidx);
       }
       $curidx++;
     }
@@ -1353,9 +1482,9 @@ sub update_scores {
     &save_curmatch($curweek);
     
     &load_curmatch($week);
-    
     # Reset the Current Week finally.
     $curweek = $week;
+    &update_standings($curweek);
   }
 }
 
@@ -1464,29 +1593,75 @@ sub chgcolor {
 }
 
 #---------------------------------------------------------------------
-sub load_matches {
+sub load_game_file {
+  my $top = shift;
+  my $game_file = shift;
 
-  print "Read data from $game_file\n";
+  print "load_game_file($game_file)\n";
 
-  my ($teamref,$matchref,$standingsref) = LoadFile($game_file);
+  my $fs = $top->FileSelect(-directory => ".",
+							-filter => "*.tks",
+							-initialfile => $game_file,
+	);
 
-  # Reload Teams
-  foreach (keys %$teamref) {
-	$teams{$_} = $$teamref{$_};
-	print "  $_ = $$teamref{$_}\n";
+  $fs->geometry("600x400");
+
+  my $gf = $fs->Show;
+
+  if ($gf ne "") {
+	print "  Reading from: $gf\n"
+	my ($teamref,$matchref,$standingsref) = LoadFile($gf);
+
+	# Reload Teams
+	foreach (keys %$teamref) {
+	  $teams{$_} = $$teamref{$_};
+	  print "  $_ = $$teamref{$_}\n";
+	}
+	
+	# Reload Matches
+	@matches = @$matchref;
+	
+	&load_curmatch(1);
+	&update_standings(1);
   }
-
-  # Reload Matches
-  @matches = @$matchref;
-
-  &load_curmatch(1);
-  &update_standings(1);
-
 }
 
 #---------------------------------------------------------------------
-sub save_matches {
+sub save_game_file {
+  my $top = shift;
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
 
+  print "DumpFile($gf, .... )\n";
+  DumpFile($gf,$teamref,$matchref,$standingsref);
+}
+
+#---------------------------------------------------------------------
+sub save_game_file_as {
+  my $top = shift;
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+
+  my $fs = $top->FileSelect(-directory => '.',
+							-filter => "*.tks",
+							-initialfile => $game_file,
+	);
+  $fs->geometry("600x400");
+  my $savefile = "";
+  $savefile = $fs->Show;
+  
+  if ($savefile ne "") {
+	print "DumpFile($savefile, .... )\n";
+	DumpFile($savefile,$teamref,$matchref,$standingsref);
+  }
+  else {
+	print "DumpFile($gf, .... )\n";
+	DumpFile($gf,$teamref,$matchref,$standingsref);
+  }
 }
 
 #---------------------------------------------------------------------
@@ -1584,6 +1759,52 @@ sub computepoints {
   }
 }
 
+
+#---------------------------------------------------------------------
+sub mkbuttons {
+  my $top = shift;
+
+  my $buttons = $top->Frame;
+  my $butspace = $buttons->Frame->pack(-side => 'left', 
+									   -fill => 'both',
+									   -expand => 'yes');
+  
+  $butspace = $buttons->Frame->pack(-side => 'left', 
+									-fill => 'both',
+									-expand => 'yes');
+  
+  $buttons->Button(-text => 'Quit',-command => sub{exit;},
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Button(-text => 'Load',-command => sub { &load_game_file($top,$game_file); },
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Button(-text => 'Save',-command => sub { 
+	&save_curmatch($curweek);
+	&save_game_file($top,$game_file,\%teams,\@matches,\%standings);
+				   },
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Button(-text => 'Save As',-command => sub { 
+	&save_curmatch($curweek);
+	&save_game_file_as($top,$game_file,\%teams,\@matches,\%standings);
+				   },
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curweek) },
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file) },
+	)->pack(-side => 'left', -expand =>'yes');
+  
+  $buttons->pack(-side => 'bottom');
+}
+
+
 #---------------------------------------------------------------------
 my $top = MainWindow->new;
 $top->configure(-title => 'Soccer Scoring',
@@ -1593,6 +1814,53 @@ $top->configure(-title => 'Soccer Scoring',
                );
 $top->geometry('-100-100');
 $top->optionAdd('*font', 'Helvetica 9');
+
+# Menu Bar of commands
+my $mbar=$top->Menu();
+$top->configure(-menu => $mbar);
+my $season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
+my $match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
+my $help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
+
+# Season Menu
+$season->command(-label =>'~New     ', -command=> sub { 
+  &init_game_file($top); },
+  );
+$season->command(-label =>'~Open    ', -command=> sub {
+  &load_game_file($top,$game_file);
+			   },
+  );
+$season->command(-label =>'~Save    ', -command=> sub { 
+  &save_curmatch($curweek);
+  &save_game_file($top,$game_file,\%teams,\@matches,\%standings);
+			   },
+  );
+$season->command(-label =>'~Save As ', -command=> sub { 
+  &save_curmatch($curweek);
+  &save_game_file_as($top,$game_file,\%teams,\@matches,\%standings);
+			   },
+  );
+$season->separator();
+$season->command(-label =>'~Update Standings', -command => sub {
+  &update_standings($curweek) },
+  );
+$season->separator();
+$season->command(-label =>'~Report  ', -command => sub {
+  &make_report($rpt_file) },
+  );
+$season->separator();
+$season->command(-label =>'~Quit    ', -command=>sub{exit},
+  );
+
+# Match Menu
+$match->command(-label => 'Reschedule', -command => sub {
+				&match_reschedule($top,$curweek);},
+  );
+
+# Help Menu
+$help->command(-label => 'Version');
+$help->separator;
+$help->command(-label => 'About');
 
 # We've got two frames, one for weekly scores, another for standings,
 # Now how to deal with updates to scores finishing the
@@ -1607,36 +1875,6 @@ $scoreframe->pack(-side => 'top', -fill => 'x');
 my $standingsframe = $top->Frame;
 &init_standings($standingsframe);
 $standingsframe->pack(-side => 'top', -fill => 'x');
-
-my $buttons = $top->Frame;
-my $butspace = $buttons->Frame->pack(-side => 'left', 
-  -fill => 'both',
-  -expand => 'yes');
-
-$butspace = $buttons->Frame->pack(-side => 'left', 
-  -fill => 'both',
-  -expand => 'yes');
-
-my $quitbut = $buttons->Button(-text => 'Quit',-command => sub{exit;},
-  )->pack(-side => 'left', -expand =>'yes');
-
-$buttons->Button(-text => 'Save',-command => sub { 
-  print "Dumped data to $game_file\n";
-  &save_curmatch($curweek);
-  DumpFile($game_file,\%teams,\@matches,\%standings);
-				 },
-  )->pack(-side => 'left', -expand =>'yes');
-
-$buttons->Button(-text => 'Load',-command => sub { &load_matches; },
-  )->pack(-side => 'left', -expand =>'yes');
-
-$buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curweek) },
-  )->pack(-side => 'left', -expand =>'yes');
-
-$buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file) },
-  )->pack(-side => 'left', -expand =>'yes');
-
-$buttons->pack(-side => 'bottom');
 
 MainLoop;
 
