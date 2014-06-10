@@ -1,12 +1,29 @@
 #!/usr/bin/perl -w
 
 use strict;
+
+# Where you can find extra modules?
+use lib "$ENV{HOME}/lib/perl";
+# Remove cwd
+no lib ".";
+
 use Tk;
+use Tk::HList;
+use Tk::ItemStyle;
 use Tk::DialogBox;
 use Tk::BrowseEntry;
 use Tk::FileSelect;
-use YAML qw(DumpFile LoadFile);
 use IO::Handle;
+use Data::Dumper;
+use Date::Calc qw(Decode_Date_US Add_Delta_Days);
+
+eval "use Tk::DateEntry; 1" or 
+  die "you need the module Tk::DateEntry installed to run this program.\n";
+
+eval "use Tk::Month; 1" or 
+  die "you need the module Tk::Month installed to run this program.\n";
+
+use YAML qw(DumpFile LoadFile);
 
 my $game_file = "DSL-2012-Outdoor.tks";
 my $rpt_file = $game_file;
@@ -18,884 +35,91 @@ my $NeedSave = 0;
 $|=1;
 
 #---------------------------------------------------------------------
+my @matches = ();
 my @scores = ( '','F',0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
 my $homeforfeit= 0;
 my $homecoed = 'no';
 my $homescore = " ";
+my $match_datelist;
+
+# Style Colors for DateList, made global so we can update them
+# easily.  Might not need to do this down the line though....
+my $dls_red;
+my $dls_green;
+my $dls_done;
+my $dls_blue;
 
 my $notokcolor = 'darkgrey';
 my $okcolor    = 'lightgreen';
 
+# Format is # -> Name
+my %teams = ();
 
 # This should be stored in a YAML file.
-my %teams = ( 1 => 'Bollocks',
-			  2 => 'New Order',
-			  3 => 'Coasters',
-			  4 => 'White Fish',
-			  5 => 'Wild Geese',
-			  6 => 'Rage',
-			  7 => 'Physical Graffiti',
-			  8 => 'Hooligans',
-  );
-
-# This should be stored in a YAML file.
+my $dolining = 0;   # Do teams need to line during the season?
 my %lining = ( 1  => 1,
-			   2  => 5, 3  => 5,
-			   4  => 3, 5  => 3,
-			   6  => 4, 7  => 4,
-			   8  => 6, 9  => 6,
-			   10 => 8, 11 => 8,
-			   12 => 7, 13 => 7,
-			   14 => 2, 15 => 2,
-			   16 => "tbd", 17 => "tdb",
+               2  => 5, 3  => 5,
+               4  => 3, 5  => 3,
+               6  => 4, 7  => 4,
+               8  => 6, 9  => 6,
+               10 => 8, 11 => 8,
+               12 => 7, 13 => 7,
+               14 => 2, 15 => 2,
+               16 => "tbd", 17 => "tdb",
   );
+# Week 0 is practice if used.  But numbering starts from 1!!!
+my %sched_template = ( 8 => {
+			     0  => [ "1-6", "2-3", "5-8", "4-7" ],
+			     1  => [ "1-2", "3-4", "5-6", "7-8" ],
+			     2  => [ "5-7", "6-8", "1-3", "2-4" ],
+			     3  => [ "4-8", "1-5", "2-6", "3-7" ],
+			     4  => [ "2-5", "3-8", "4-7", "1-6" ],
+			     5  => [ "3-6", "2-7", "1-8", "4-5" ],
+			     6  => [ "1-7", "4-6", "2-8", "3-5" ],
+			     7  => [ "4-1", "7-6", "8-5", "3-2" ],
+			     8  => [ "6-5", "4-3", "2-1", "8-7" ],
+			     9  => [ "7-5", "8-6", "3-1", "4-2" ],
+			     10 => [ "8-4", "5-1", "7-3", "6-2" ],
+			     11 => [ "8-3", "5-2", "7-4", "6-1" ],
+			     12 => [ "6-3", "7-2", "5-4", "8-1" ],
+			     13 => [ "6-4", "7-1", "8-2", "5-3" ],
+			     14 => [ "3-2", "8-5", "7-6", "4-1" ],
+			     15 => [ "Make-up", "Make-up", "Make-up", "Make-up" ],
+			     16 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ],
+			     17 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ],
+			     18 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ]
+			     },
+		       9 => { },
+		     );
 
-my %sched_eight_teams = ( );
-my %sched_nine_teams = ( );
+my $match_template = { Week => 0,
+                       Date => '',
+                       Time => '',
+                       Field => '',
+                       Home => 0,
+                       Away => 0,
+                       HomeScore => "",
+                       HomeCoed => 0,
+                       HomePoints => 0,
+                       AwayScore => "",
+                       AwayCoed => 0,
+                       AwayPoints => 0,
+                       Complete => 0,
+                    };
 
-#---------------------------------------------------------------------
-# Don't be stupid, just pre-figure out an 8 or 9 team season schedule
-# and stick with it, making changes as needed.  Sigh... 
-#
-sub init_season {
-  my $n_teams;
-  my $n_playoffs = shift;
-  my $n_makeups = shift;
-  my $overlap_m_p = shift;
-  my $n_preseason = shift;
-  my $lining = shift;
 
-  print "init_season($n_teams,$n_playoffs,$n_makeups,$overlap_m_p,$n_preseason,$lining)\n";
-
-  my @m;
-  
-  my $n_weeks = ($n_teams - 1) * 2;
-  # Odd number of teams requires bye weeks
-  my $need_byes = $n_teams % 2;
-
-  my $total_weeks = $n_weeks + $n_playoffs + $n_makeups - $overlap_m_p;
-
-  print "Num weeks of games = $n_weeks\n";
-  print "Total weeks = $total_weeks\n";
-
-  for (my $week = 1; $week <= ($n_weeks + $n_playoffs); $week++) {
-	print "  $week\n";
-  }
-  return @m;
-}
-
-# This should be stored in a YAML file.
-my @matches = ( 
-  { Week => 1,
-	Date => '04/24/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 1,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 1,
-	Date => '04/24/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 3,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 1,
-	Date => '04/24/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 5,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 1,
-	Date => '04/24/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 7,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 2,
-	Date => '05/01/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 5,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 2,
-	Date => '05/01/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 6,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 2,
-	Date => '05/01/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 1,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 2,
-	Date => '05/01/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 2,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 3,
-	Date => '05/08/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 4,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 3,
-	Date => '05/08/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 1,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 3,
-	Date => '05/08/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 2,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 3,
-	Date => '05/08/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 3,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 4,
-	Date => '05/15/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 2,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 4,
-	Date => '05/15/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 3,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 4,
-	Date => '05/15/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 4,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 4,
-	Date => '05/15/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 1,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 5,
-	Date => '05/22/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 3,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 5,
-	Date => '05/22/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 2,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 5,
-	Date => '05/22/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 1,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 5,
-	Date => '05/22/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 4,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 6,
-	Date => '05/29/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 1,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 6,
-	Date => '05/29/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 4,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-  },
-  { Week => 6,
-	Date => '05/29/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 2,
-	Away => 8,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 6,
-	Date => '05/29/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 3,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 7,
-	Date => '06/05/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 4,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 7,
-	Date => '06/05/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 7,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 7,
-	Date => '06/05/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 8,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 7,
-	Date => '06/05/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 3,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 8,
-	Date => '06/12/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 6,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
- },
-  { Week => 8,
-	Date => '06/12/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 4,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 8,
-	Date => '06/12/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 2,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 8,
-	Date => '06/12/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 8,
-	Away => 7,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 9,
-	Date => '06/19/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 7,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 9,
-	Date => '06/19/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 8,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 9,
-	Date => '06/19/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 3,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 9,
-	Date => '06/12/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 4,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 10,
-	Date => '06/26/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 8,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 10,
-	Date => '06/26/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 5,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 10,
-	Date => '06/26/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 7,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 10,
-	Date => '06/26/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 6,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 11,
-	Date => '07/03/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 8,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 11,
-	Date => '07/03/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 5,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 11,
-	Date => '07/03/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 7,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 11,
-	Date => '07/03/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 6,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 12,
-	Date => '07/10/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 6,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 12,
-	Date => '07/10/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 7,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 12,
-	Date => '07/10/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 5,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 12,
-	Date => '07/10/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 8,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 13,
-	Date => '07/17/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 6,
-	Away => 4,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 13,
-	Date => '07/17/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 7,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 13,
-	Date => '07/17/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 8,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 13,
-	Date => '07/17/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 5,
-	Away => 3,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  { Week => 14,
-	Date => '07/24/2012',
-	Time => '6pm',
-	Field => 'Field 1',
-	Home => 3,
-	Away => 2,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 14,
-	Date => '07/24/2012',
-	Time => '6pm',
-	Field => 'Field 2',
-	Home => 8,
-	Away => 5,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 14,
-	Date => '07/24/2012',
-	Time => '7pm',
-	Field => 'Field 1',
-	Home => 7,
-	Away => 6,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  { Week => 14,
-	Date => '07/24/2012',
-	Time => '7pm',
-	Field => 'Field 2',
-	Home => 4,
-	Away => 1,
-	HomeScore => "",
-	HomeCoed => 0,
-	HomePoints => 0,
-	AwayScore => "",
-	AwayCoed => 0,
-	AwayPoints => 0,
-	Complete => 0,
-  },
-  
-  );
-
+my @teamcnt = sort(qw(8 9));
+my $maxnumteams = $teamcnt[$#teamcnt];
 my $numteams = 8;
-my $numweeks = 16;
+
+# Two rounds of games for each team playing every other team.
+my $numweeks = ($numteams - 1) * 2;
 my $week = 1;
 my $curweek = 0;
 my $weekdate= "";
 my @weeks;
 my $matches_per_week = 4;
 
-for (my $w=1; $w <= $numweeks; $w++) {
-  push @weeks, $w;
-}
 
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
@@ -911,6 +135,7 @@ for (my $m=1; $m <= $matches_per_week; $m++) {
 }
 
 my %standings;
+my %season;
 
 #---------------------------------------------------------------------
 # Sort the %standings array (see zero_standings for format) by RANK,
@@ -920,38 +145,46 @@ my %standings;
 sub byweektimefield {
   $a->{Week} <=> $b->{Week} ||
     $a->{Time} cmp $b->{Time} ||
-	$a->{Field} cmp $b->{Field};
+        $a->{Field} cmp $b->{Field};
 }
 
 #---------------------------------------------------------------------
+# If $new is blank, update all dates...  I think.
 sub updateweekdates {
   my $old = shift;
   my $new = shift;
 
-  print "updateweekdates($old,$new)\n";
+  print "updateweekdates(\"$old\",\"$new\")\n";
 
   my %dates;
   my $found=0;
   foreach my $match (sort byweektimefield @matches) {
-	if ($match->{"Date"} eq $old) {
-	  $match->{"Date"} = "$new ($old)";
-	  print "  match->{Date} = ", $match->{Date}, "\n";
-	  $found++;
-	}
+    if ($old eq "" && $new eq "") {
+      $match->{"Date"} = "$old";
+    }
+    elsif ($match->{"Date"} eq $old) {
+      $match->{"Date"} = "$new ($old)";
+      print "  match->{Date} = ", $match->{Date}, "\n";
+      $found++;
+    }
   }
   return $found;
 }
 
 #---------------------------------------------------------------------
-sub getweekdates {
+# Input:  Week Number
+# Return: Date of the matches that week.
+# Notes:  All matches are on the same day.
+
+sub week2date {
   my $w = shift;
 
   foreach my $match (sort byweektimefield @matches) {
-	if ($match->{"Week"} == $w) {
-	  my $d = $match->{Date};
-	  #print "Week = $w, Date = $d\n";
-	  return $d;
-	}
+        if ($match->{"Week"} == $w) {
+          my $d = $match->{Date};
+          #print "Week = $w, Date = $d\n";
+          return $d;
+        }
   }
 }
 
@@ -964,38 +197,38 @@ sub match_reschedule {
 
   print "match_reschedule($w)\n";
   
-  my $old_date = &getweekdates($w);
+  my $old_date = &week2date($w);
   my $new_date = "";
 
   my $dialog = $top->DialogBox(-title => "Reschedule Match Date",
-							   -buttons => [ 'Ok', 'Cancel' ],
-							   -default_button => 'Ok');
+                               -buttons => [ 'Ok', 'Cancel' ],
+                               -default_button => 'Ok');
   $dialog->add('Label', -text => "Old Date: $old_date", -width => 10,)->pack;
   $dialog->add('LabEntry', -textvariable => \$new_date, -width => 10, 
-			   -label => 'New Date (MM/DD/YYYY)', 
-			   -labelPack => [-side => 'left'])->pack;
-
+               -label => 'New Date (MM/DD/YYYY)', 
+               -labelPack => [-side => 'left'])->pack;
+  
   my $ok = 1;
   while ($ok) {
-	my $answer = $dialog->Show( );
-	
-	if ($answer eq "Ok") {
-	  print "New Date = $new_date\n";
-	  if ($new_date =~ m/^\d\d\/\d\d\/\d\d\d\d$/) {
-		$ok--;
-		my $num_matches = &updateweekdates($old_date,$new_date);
-	  }
-	  else {
-		$top->messageBox(
+    my $answer = $dialog->Show( );
+    
+    if ($answer eq "Ok") {
+      print "New Date = $new_date\n";
+      if ($new_date =~ m/^\d\d\/\d\d\/\d\d\d\d$/) {
+        $ok--;
+        my $num_matches = &updateweekdates($old_date,$new_date);
+      }
+      else {
+        $top->messageBox(
 		  -title => "Error!  Bad Date format.",
 		  -message => "Error!  Bad Date format, please use MM/DD/YYYY.",
 		  -type => 'Ok',
-		  );
-	  }
-	}
-	elsif ($answer eq "Cancel") {
-	  print "No update made.\n";
-	}
+                        );
+      }
+    }
+    elsif ($answer eq "Cancel") {
+      print "No update made.\n";
+    }
   }
 }
 
@@ -1006,7 +239,7 @@ sub mk_results_rpt {
   
   print "mk_results_rpt($w,FH)\n";
 
-  my $d = getweekdates($w);
+  my $d = &week2date($w);
   my ($h, $hc, $hs);
   my ($a, $ac, $as);
 
@@ -1021,7 +254,7 @@ format RESULTS_TOP =
 
 format RESULTS =
       @<<<<<<<<<<<<<<<<<  @>  @<<<   vs  @<<<<<<<<<<<<<<<<<  @>  @<<<
-	  $h,                 $hs,$hc,       $a,                 $as,$ac
+          $h,                 $hs,$hc,       $a,                 $as,$ac
 .
   
 
@@ -1051,7 +284,7 @@ sub mk_standings_rpt {
 
   my ($n, $team, $w, $t, $l, $f, $c, $gf, $ga, $pts, $d);
 
-  $d = "$week, (" . &getweekdates($week) . ")";
+  $d = "$week, (" . &week2date($week) . ")";
 
 format STANDINGS_TOP =
 
@@ -1074,18 +307,18 @@ format STANDINGS =
 
   &update_standings($week);
   for (my $i = 1; $i <= $numteams; $i++) {
-	$n    = $standings{$i}->{TEAMNUM};
-	$team = $standings{$i}->{TEAM};
-	$w    = $standings{$i}->{W};
-	$t    = $standings{$i}->{T};
-	$l    = $standings{$i}->{L};
-	$f    = $standings{$i}->{F};
-	$c    = $standings{$i}->{C};
-	$gf   = $standings{$i}->{GF};
-	$ga   = $standings{$i}->{GA};
-	$pts  = $standings{$i}->{PTS};
+        $n    = $standings{$i}->{TEAMNUM};
+        $team = $standings{$i}->{TEAM};
+        $w    = $standings{$i}->{W};
+        $t    = $standings{$i}->{T};
+        $l    = $standings{$i}->{L};
+        $f    = $standings{$i}->{F};
+        $c    = $standings{$i}->{C};
+        $gf   = $standings{$i}->{GF};
+        $ga   = $standings{$i}->{GA};
+        $pts  = $standings{$i}->{PTS};
 
-	write $fh;
+        write $fh;
   }  
 }
 
@@ -1116,8 +349,8 @@ sub mk_schedule_rpt {
 
   my ($time, $field, $home,$away);
 
-  my $weekdate = &getweekdates($week);
-  my $nextweekdate = &getweekdates($nextweek);
+  my $weekdate = &week2date($week);
+  my $nextweekdate = &week2date($nextweek);
   my $weekstr = "$teams{$lining{$week}} ($weekdate)";
   my $nextweekstr = "$teams{$lining{$nextweek}} ($nextweekdate)";
 
@@ -1141,19 +374,20 @@ format SCHEDULE =
   $fh->format_lines_left(0);
 
   foreach my $m (sort byweektimefield @matches) {
-	if ($m->{"Week"} == $week) {
-	  $time = $m->{"Time"};
-	  $field = $m->{"Field"};
-	  $home = $teams{$m->{"Home"}};
-	  $away = $teams{$m->{"Away"}};
-	  write $fh;
-	}
+        if ($m->{"Week"} == $week) {
+          $time = $m->{"Time"};
+          $field = $m->{"Field"};
+          $home = $teams{$m->{"Home"}};
+          $away = $teams{$m->{"Away"}};
+          write $fh;
+        }
   }
 
 format LINING_TOP =
 .
 
 format LINING =
+
   Lining:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
            $weekstr;
            @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -1162,12 +396,13 @@ format LINING =
 
 .
 
-  $fh->format_name("LINING");
-  $fh->format_top_name("LINING_TOP");
-  $fh->autoflush(1);
-  $fh->format_lines_left(0);
-  write $fh;
-
+  if ($dolining) {
+	$fh->format_name("LINING");
+	$fh->format_top_name("LINING_TOP");
+	$fh->autoflush(1);
+	$fh->format_lines_left(0);
+	write $fh;
+  }
 }
 
 #---------------------------------------------------------------------
@@ -1214,12 +449,283 @@ sub make_report {
   }
 }
    
+
+#---------------------------------------------------------------------
+sub validate {
+  my $num = shift @_;
+  my $start = shift @_;
+  my $descrip = shift @_;
+  my $tref = shift @_;
+  my %t = %$tref;
+
+  if ($start eq "") {
+    print "Need a start date.\n";
+    return 0;
+  }
+  elsif ($descrip eq "") {
+    print "Need a Season Description.\n";
+    return 0;
+  }
+  else {
+    my $cnt=0;
+    foreach my $k (keys %t) {
+      $cnt++ if (defined $t{$k} && $t{$k} ne "");
+    }
+    if ($cnt < $num) {
+      print "You entered $cnt team names, you need at least $num.\n";
+      return 0;
+    }
+  }
+  print "ok\n";
+  return 1;
+}
+
+#---------------------------------------------------------------------
+sub update_teams {
+  my $win = shift @_;
+  my $num_ref = shift @_;
+  my $num = $$num_ref;
+  my $teamsref = shift @_;
+  my %t = %$teamsref;
+  my $season_ref = shift @_;
+  my $season = $$season_ref;
+  my $start_date_ref = shift @_;
+  my $start_date = $$start_date_ref;
+  my $practice = shift @_;
+  my $lining = shift @_;
+
+  # Validate inputs.  Should be in the Setup a New Season window, with
+  # the 'Done' button disabled until all the required info is entered.
+  
+  print "Start Date: $start_date\n";
+  if (&validate($num,$start_date,$season,$teamsref)) {
+    foreach my $n (sort keys %t) {
+      if ($n <= $num) {
+	print "  $n -> $t{$n}\n";
+	$teams{$n} = $t{$n};
+      }
+    }
+    
+    my $cur_date = $start_date;
+    
+    # Initialize Matches array:
+    print "Num teams = $num\n";
+    my %template = %{$sched_template{$num}};
+    # Actual week in schedule, template starts at zero for warmup
+    # week, which is not scored, but is scheduled.  
+    my $sched_week = 1;
+    foreach my $tmpl_wk (sort { $a <=> $b } keys %template) {
+      next if ($tmpl_wk == 0 && $practice == 0);
+      my @week_sched = @{$template{$tmpl_wk}};
+      
+      # Note!  Week Schedule assumes two fields and two games 
+      my $i = 0;
+      my $game;
+      foreach my $match (@week_sched) {
+	my ($home, $away) = split("-",$match);
+	
+	print "$sched_week - $match\n";
+	# copy our pre-setup match template and fill in the proper fields...
+	$game = { };
+	$game->{Date} = $cur_date;
+	$game->{OrigDate} = "";
+	$game->{Week} = $sched_week;
+	$game->{Home} = $home;
+	$game->{HomeScore} = "";
+	$game->{HomeCoed} = 0;
+	$game->{HomePoints} = 0;
+	$game->{Away} = $away;
+	$game->{AwayScore} = "";
+	$game->{AwayCoed} = 0;
+	$game->{AwayPoints} = 0;
+	$game->{Complete} = 0;
+	
+	# Template assumes two games a 7pm, then two at 8pm, 
+	# using Fields 1 & 2 in that order.
+	if ($i == 0 || $i == 2) {
+	  $game->{Field} = "Field 1";
+	} else {
+	  $game->{Field} = "Field 2";
+	}
+	if ($i == 0 || $i == 1) {
+	  $game->{Time} = "7pm";
+	} else {
+	  $game->{Time} = "8pm";
+	}
+	$i++; 
+	push @matches, $game;
+      }
+      
+      # Increment date by one week
+      my ($y,$m,$d) = Decode_Date_US($cur_date);
+      print "date- y: $y, m: $m, d: $d\n";
+      ($y,$m,$d) = Add_Delta_Days($y,$m,$d,7);
+      print "  +7  y: $y, m: $m, d: $d\n";
+      $cur_date = "$m/$d/$y";
+      $sched_week++;
+    }
+    
+    # Debugging - show @matches
+    print "-------------- Dumper ----------------\n";
+    #print Dumper(@matches);
+    
+    # Now update all the global stuff and displays....
+    &load_datelist($match_datelist);
+    &load_curmatch(1);
+    &update_standings(1);
+    $win->exit;
+  }
+}
+
 #---------------------------------------------------------------------
 sub init_game_file {
   my $top = shift;
 
+  my $widget;
   print "init_game_file()\n";
-  print "  Not implemented yet.\n";
+
+  my $first_match_practice = 0;
+  my $teams_line_fields = 0;
+  my $start_date = "";
+  my $descrip = "";
+  
+  my $win = MainWindow->new();
+  $win->title("Setup a new Season");
+  $win->configure(-height => 400,
+                  -width => 800,
+                  -background => 'white',
+     );
+  $win->geometry('-500-500');
+  $win->optionAdd('*font', 'Helvetica 9');
+
+  my $t;
+  
+  my $tf = $win->Frame();
+
+  my $lf = $tf->Frame(-borderwidth => 1, -relief => 'solid');
+  my $rf = $tf->Frame(-borderwidth => 1, -relief => 'solid');
+
+  $lf->pack(-side => 'left', -fill => 'y');
+  $rf->pack(-side => 'right', -fill => 'y');
+
+  $t = $lf->Frame(-borderwidth => 1, -relief => 'solid');
+  $t->Label(-text => 'Season Description:')->pack(-side => 'left');
+  $t->Entry(-textvariable => \$descrip, -width => 40)->pack(-side => 'bottom');
+  $t->pack(-side => 'top', -fill => 'x');
+
+  $lf->BrowseEntry(-label => 'Num Teams',
+                  -variable => \$numteams,
+                  -width => 3,
+                  -choices => \@teamcnt,
+                 )->pack(-side => 'top');
+  
+  $lf->Checkbutton(-variable => \$first_match_practice,
+                   -text => "First Match for Practice? ",
+                  )->pack(-side => 'top', -fill => 'x');
+
+  $lf->Checkbutton(-variable => \$teams_line_fields,
+                  -text => "Teams Line Fields?",
+                 )->pack(-side => 'top', -fill => 'x');
+
+  $t = $lf->Frame(-borderwidth => 1, -relief => 'solid');
+  $t->Label(-text => 'Start Date:')->pack(-side => 'left');
+  $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');
+  $t->pack(-side => 'top', -fill => 'x');
+  
+  my %temp;
+  $rf->Label(-text => 'Team Names:')->pack(-side => 'top');
+  for (my $i=1; $i <= $maxnumteams; $i++) {
+    my $f = $rf->Frame();
+    $f->Label(-text => " $i ", -width => 6)->pack(-side => 'left');
+    $f->Entry(-textvariable => \$temp{$i}, 
+              -width => 25,
+             )->pack(-side => 'left');
+    $f->pack(-side => 'top', -fill => 'x');
+  }
+
+  $tf->pack(-side => 'top', -fill => 'x');
+
+  # Buttons at bottom of frame.
+  my $bf = $win->Frame(-borderwidth => 1, -relief => 'solid');
+  $bf->Button(-text => "Cancel", -command => [ $win => 'destroy' ]
+            )->pack(-side => 'left',-fill => 'x');
+  $bf->Button(-text => "Done",
+-command => [ \&update_teams, $win, \$numteams, \%temp, \$descrip, \$start_date, \$first_match_practice, \$teams_line_fields ] 
+            )->pack(-side => 'right', -fill => 'x');
+  $bf->pack(-side => 'bottom', -fill => 'x');
+}
+
+#---------------------------------------------------------------------
+# Accessor for date info stored in each match.  Returns and array of
+# date(s) for all matches, sorted by weeknumber.  
+sub weekanddate {
+  my %w;
+  my @t;
+  
+  foreach my $m (sort byweektimefield @matches) {
+    $w{$m->{'Week'}} = $m->{'Date'};
+  }
+  
+  foreach (sort keys %w) {
+    push @t, [ $_, $w{$_} ];
+  }
+
+  # Sort before we return... not an ideal data structure, should be a
+  # hash instead, indexed by week number.  
+  return(sort { $a->[0] <=> $b->[0] } @t);
+}
+
+#---------------------------------------------------------------------
+sub hl_browse {
+  my $hl = shift;
+  my ($path) = (@_);
+
+  my $week = $hl->itemCget($path,0,-text);
+  my $date = $hl->itemCget($path,1,-text);
+  print "Path = $path (week = $week, date = $date)\n";
+  &update_scores($week);
+}
+
+#---------------------------------------------------------------------
+sub load_datelist {
+  my $hl = shift;
+
+  print "load_datelist()\n";
+  
+  $hl->delete('all');
+
+  $dls_red = $hl->ItemStyle('text', -foreground => '#800000'); 
+  $dls_blue = $hl->ItemStyle('text', -foreground => '#000080', -anchor=>'w'); 
+  $dls_green = $hl->ItemStyle('text', -foreground => 'green', -anchor=>'w'); 
+  $dls_done = $hl->ItemStyle('text', -background => 'lightgreen');
+  
+  foreach my $key (&weekanddate) {
+        my $e = $hl->addchild("");
+        $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
+        $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
+        $hl->itemCreate($e, 2, -itemtype=>'text', -text => "          ", -style=>$dls_blue); 
+  }
+}
+
+#---------------------------------------------------------------------
+sub init_datelist {
+  my $top = shift;
+  print "init_datelist()\n";
+
+  my $hl = $top->Scrolled('HList', -scrollbars => 'ow',
+                          -columns=>3, -header => 1, 
+			  -selectmode => 'single', -width => 40,
+                         )->pack(-fill => 'x'); 
+  $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
+  $hl->header('create', 0, -itemtype => 'text', -text => "Week");
+  $hl->columnWidth(0, -char => 6);
+  $hl->header('create', 1, -itemtype => 'text', -text => "Date");
+  $hl->columnWidth(1, -char => 16);
+  $hl->header('create', 2, -itemtype => 'text', -text => "Old Date");
+  $hl->columnWidth(2, -char => 16);
+
+  &load_datelist($hl);
+  return $hl;
 }
 
 #---------------------------------------------------------------------
@@ -1251,7 +757,7 @@ sub init_standings {
 
     $ff->Label(-text => $x, -width => 2)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{TEAM}, -width => 20)->pack(-side => 'left');
-	$standings{$x}->{TEAM} = $teams{$x};
+        $standings{$x}->{TEAM} = $teams{$x};
     $ff->Label(-textvariable => \$standings{$x}->{W}, -width => 4)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{T}, -width => 4)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{L}, -width => 4)->pack(-side => 'left');
@@ -1271,20 +777,20 @@ sub init_standings {
 sub zero_standings {
 
   if (@_) {
-	my $ref = shift;
-	for (my $t=1; $t <= $numteams; $t++) {
-	  foreach my $k (qw( W L T F C PTS GF GA RANK)) {
-		$$ref{$t}->{$k} = 0;
-	  }
-	}
+    my $ref = shift;
+    for (my $t=1; $t <= $numteams; $t++) {
+      foreach my $k (qw( W L T F C PTS GF GA RANK)) {
+        $$ref{$t}->{$k} = 0;
+      }
+    }
   }
   else {
-	for (my $t=1; $t <= $numteams; $t++) {
-	  foreach my $k (qw( W L T F C PTS GF GA RANK)) {
-		$standings{$t}->{$k} = 0;
-	  }
-	}
-  }	
+    for (my $t=1; $t <= $numteams; $t++) {
+      foreach my $k (qw( W L T F C PTS GF GA RANK)) {
+        $standings{$t}->{$k} = 0;
+      }
+    }
+  }     
 }
 
 #---------------------------------------------------------------------
@@ -1305,10 +811,8 @@ sub update_standings {
   # Now go through all matches and figure out standings.
   foreach my $m (sort byweektimefield @matches) {
     my $matchweek = $m->{"Week"};
-    #print "Match week: $matchweek, Curweek: $curweek\n";
     if ($matchweek <= $curweek) {
       my $c = $m->{"Complete"};
-      #print "Summing week $week (Complete = $c)\n";
       
       if ($c) {
 	my $h = $m->{"Home"};
@@ -1334,10 +838,14 @@ sub update_standings {
 	  $tmp{$h}->{GF} += 5;
 	}
 	else {
+	  # reset scores and such...
+	  #print "   HS: $m->{HomeScore}, AS: $m->{AwayScore}\n";
+
 	  $tmp{$h}->{GF} += $m->{HomeScore};
 	  $tmp{$a}->{GA} += $m->{HomeScore};
 	  $tmp{$h}->{GA} += $m->{AwayScore};
 	  $tmp{$a}->{GF} += $m->{AwayScore};
+
 	  if ($m->{HomeScore} < $m->{AwayScore}) {
 	    $tmp{$h}->{L}++;
 	    $tmp{$a}->{W}++;
@@ -1368,13 +876,13 @@ sub update_standings {
   foreach my $idx (sort {
     $tmp{$b}->{PTS} <=> $tmp{$a}->{PTS} 
       ||
-	$tmp{$b}->{W} <=> $tmp{$a}->{W}
-	  ||
-	    $tmp{$b}->{L} <=> $tmp{$a}->{L}
-	      ||
-		$tmp{$b}->{T} <=> $tmp{$a}->{T}
-		  ||
-		    ($tmp{$b}->{GF} - $tmp{$b}->{GA}) <=> ($tmp{$a}->{GF} - $tmp{$a}->{GA});
+    $tmp{$b}->{W} <=> $tmp{$a}->{W}
+      ||
+    $tmp{$b}->{L} <=> $tmp{$a}->{L}
+      ||
+    $tmp{$b}->{T} <=> $tmp{$a}->{T}
+      ||
+    ($tmp{$b}->{GF} - $tmp{$b}->{GA}) <=> ($tmp{$a}->{GF} - $tmp{$a}->{GA});
   } keys %tmp) {
     #print "$idx  $teams{$idx}   $tmp{$idx}->{PTS}\n";
     foreach my $k (qw( W L T F C PTS GF GA RANK)) {
@@ -1437,10 +945,10 @@ sub clear_match_display {
 
 sub load_curmatch {
   my $week = shift;
-  
+
   &clear_match_display;
 
-# Fill in the $curmatches with the proper match info
+  # Fill in the $curmatches with the proper match info
   my $curidx = 1;
   foreach my $m (sort byweektimefield @matches) {
     if ($m->{"Week"} == $week) {
@@ -1459,10 +967,10 @@ sub load_curmatch {
       $curmatch{$curidx}->{"Complete"} = $m->{"Complete"};
       
       if ($m->{"Complete"}) {
-		&chgcolor($okcolor,$curidx);
+	&chgcolor($okcolor,$curidx);
       } 
       else {
-		&chgcolor($notokcolor,$curidx);
+	&chgcolor($notokcolor,$curidx);
       }
       $curidx++;
     }
@@ -1477,7 +985,7 @@ sub update_scores {
     
   if ($curweek != $week) {
     my $curidx;
-    $weekdate = join("-", &getweekdates($week));
+    $weekdate = join("-", &week2date($week));
     
     &save_curmatch($curweek);
     
@@ -1497,22 +1005,24 @@ sub init_scores {
   my $hf = $top->Frame;
   my $scoreframe = $top->Frame;
   
-  # Week dropdown and dates
-  $header->BrowseEntry(-label => 'Week:', -variable => \$week, 
-		       -width => 2,
-		       -choices => \@weeks,
-		       -command => sub { &update_scores($week); },
-		      )->pack(-side => 'left');
-  
-  $weekdate=join("-",&getweekdates($week));
-  print "Weekdate = $weekdate\n";
-  $header->Label(-text => "Date: ", -width => 30, 
-		 -anchor => 'e')->pack(-side=>'left');
-  $header->Label(-textvariable => \$weekdate,
-		 -width => 12)->pack(-side=>'left');
-  
-  $header->pack(-side => 'top', -fill => 'x');
-  
+  # Week dropdown and dates, getting rid of them...
+  if (0) {
+	$header->BrowseEntry(-label => 'Week:', -variable => \$week, 
+						 -width => 2,
+						 -choices => \@weeks,
+						 -command => sub { &update_scores($week); },
+	  )->pack(-side => 'left');
+	
+	$weekdate=join("-",&week2date($week));
+	print "Weekdate = $weekdate\n";
+	$header->Label(-text => "Date: ", -width => 30, 
+				   -anchor => 'e')->pack(-side=>'left');
+	$header->Label(-textvariable => \$weekdate,
+				   -width => 12)->pack(-side=>'left');
+	
+	$header->pack(-side => 'top', -fill => 'x');
+  }
+
   # Headers
   
   $hf->Label(-text => "Time", -width => 6)->pack(-side => 'left');
@@ -1546,15 +1056,18 @@ sub init_scores {
 					-listwidth => 20,
 					-choices => \@scores,
 					-browsecmd => [ \&computepoints, $m,"Home" ],
+					# Only allow numbers or the letter F to be entered
+					-validate => 'key',
+					-validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
 	  )->pack(-side => 'left');
     $f->Checkbutton( -variable => \$curmatch{$m}->{"HomeCoed"},
-					 -command => [ \&computepoints, $m,"Home" ],
-	  )->pack(-side => 'left');
+		     -command => [ \&computepoints, $m,"Home" ],
+		   )->pack(-side => 'left');
     
     $w = $f->Label(-textvariable => \$curmatch{$m}->{"HomePoints"},
-				   -background => $notokcolor,
-				   -width => 6,
-	  )->pack(-side => 'left');
+		   -background => $notokcolor,
+		   -width => 6,
+		  )->pack(-side => 'left');
     push @{$curmatch{$m}->{PointsLabels}}, $w;
     
     $f->Label(-text => "vs", -width => 8)->pack(-side => 'left');
@@ -1567,6 +1080,9 @@ sub init_scores {
 					-listwidth => 20,
 					-choices => \@scores,
 					-browsecmd => [ \&computepoints, $m,"Home" ],
+					# Only allow numbers or the letter F to be entered
+					-validate => 'key',
+					-validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
 	  )->pack(-side => 'left');
     $f->Checkbutton( -variable => \$curmatch{$m}->{"AwayCoed"},
 					 -command => [ \&computepoints, $m,"Home" ],
@@ -1595,34 +1111,45 @@ sub chgcolor {
 #---------------------------------------------------------------------
 sub load_game_file {
   my $top = shift;
-  my $game_file = shift;
+  my $file = shift;
 
-  print "load_game_file($game_file)\n";
+  print "Read data from $file\n";
 
   my $fs = $top->FileSelect(-directory => ".",
-							-filter => "*.tks",
-							-initialfile => $game_file,
-	);
-
+			    -filter => "*.tks",
+			    -initialfile => $file,
+			   );
+  
   $fs->geometry("600x400");
 
   my $gf = $fs->Show;
 
   if ($gf ne "") {
-	print "  Reading from: $gf\n"
-	my ($teamref,$matchref,$standingsref) = LoadFile($gf);
+    my ($teamref,$matchref,$standingsref,$seasonref) = LoadFile($gf);
+    
+	# Needs better error checking here!
 
-	# Reload Teams
-	foreach (keys %$teamref) {
-	  $teams{$_} = $$teamref{$_};
-	  print "  $_ = $$teamref{$_}\n";
-	}
-	
-	# Reload Matches
-	@matches = @$matchref;
-	
-	&load_curmatch(1);
-	&update_standings(1);
+    # Reload Teams
+    foreach (keys %$teamref) {
+      $teams{$_} = $$teamref{$_};
+      print "  $_ = $$teamref{$_}\n";
+    }
+
+    # Reload Matches
+    @matches = @$matchref;
+
+    # Update the week display maybe?
+    &load_datelist($match_datelist);
+    
+    &load_curmatch(1);
+    &update_standings(1);
+
+	# Update the rptfile name
+	$rpt_file = $gf;
+	$rpt_file =~ s/\.tks$/\.rpt/;
+
+	# Reset global default game_file
+	$game_file = $gf;
   }
 }
 
@@ -1633,6 +1160,7 @@ sub save_game_file {
   my $teamref = shift;
   my $matchref = shift;
   my $standingsref = shift;
+  my $seasonref = shift;
 
   print "DumpFile($gf, .... )\n";
   DumpFile($gf,$teamref,$matchref,$standingsref);
@@ -1783,13 +1311,13 @@ sub mkbuttons {
   
   $buttons->Button(-text => 'Save',-command => sub { 
 	&save_curmatch($curweek);
-	&save_game_file($top,$game_file,\%teams,\@matches,\%standings);
+	&save_game_file($top,$game_file,\%teams,\@matches,\%standings,\%season);
 				   },
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save As',-command => sub { 
 	&save_curmatch($curweek);
-	&save_game_file_as($top,$game_file,\%teams,\@matches,\%standings);
+	&save_game_file_as($top,$game_file,\%teams,\@matches,\%standings,\%season);
 				   },
 	)->pack(-side => 'left', -expand =>'yes');
   
@@ -1832,12 +1360,12 @@ $season->command(-label =>'~Open    ', -command=> sub {
   );
 $season->command(-label =>'~Save    ', -command=> sub { 
   &save_curmatch($curweek);
-  &save_game_file($top,$game_file,\%teams,\@matches,\%standings);
+  &save_game_file($top,$game_file,\%teams,\@matches,\%standings,\%season);
 			   },
   );
 $season->command(-label =>'~Save As ', -command=> sub { 
   &save_curmatch($curweek);
-  &save_game_file_as($top,$game_file,\%teams,\@matches,\%standings);
+  &save_game_file_as($top,$game_file,\%teams,\@matches,\%standings,\%season);
 			   },
   );
 $season->separator();
@@ -1862,19 +1390,24 @@ $help->command(-label => 'Version');
 $help->separator;
 $help->command(-label => 'About');
 
-# We've got two frames, one for weekly scores, another for standings,
-# Now how to deal with updates to scores finishing the
-# standings.... plan is to just delete the children of $standingsframe
-# and re-create.  Same for week frame when it's rebuilt.
+# Scores are up top, Week display and standings below, side by side.
 
-my $scoreframe=$top->Frame();
+my $scoreframe=$top->Frame(-border => 2, -relief => 'groove');
 &init_scores($scoreframe,$week);
 &update_scores($week);
 $scoreframe->pack(-side => 'top', -fill => 'x');
 
-my $standingsframe = $top->Frame;
+my $bottomframe = $top->Frame();
+
+my $datesframe = $bottomframe->Frame(-border => 2, -relief => 'groove');
+$match_datelist = &init_datelist($datesframe);
+$datesframe->pack(-side => 'left', -fill => 'x');
+
+my $standingsframe = $bottomframe->Frame(-border => 2, -relief => 'groove');
 &init_standings($standingsframe);
-$standingsframe->pack(-side => 'top', -fill => 'x');
+$standingsframe->pack(-side => 'right', -fill => 'y');
+
+$bottomframe->pack(-side => 'top', -fill => 'x');
 
 MainLoop;
 
