@@ -72,6 +72,7 @@ $|=1;
 
 #---------------------------------------------------------------------
 my @matches = ();
+my @match_dates = ();
 my @scores = ( '','F',0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
 my %lining_team;
 my %bye_team;
@@ -98,6 +99,9 @@ my $DEBUG;
 my $prog_help;
 my $man;
 my $initialize_season = 0;
+
+# Used to configure DateEntry to ignore certain dates.
+my @blockdates = ();
 
 #---------------------------------------------------------------------
 # These schedules should be stored in a YAML file somewhere else.
@@ -203,6 +207,7 @@ my $playoff_rnd = $playoff_rnds[0];
 my $numweeks = ($numteams - 1) * 2;
 my $week = 1;
 my $curweek = 0;
+my $curdate = "";
 my $weekdate= "";
 my @weeks;
 my $matches_per_week = 4;
@@ -286,15 +291,7 @@ sub init_matches_per_week {
   return %t;
 }
 #---------------------------------------------------------------------
-# sort matches by week then time then field
-
-sub byweektimefield {
-  $a->{Week} <=> $b->{Week} ||
-    $a->{Time} cmp $b->{Time} ||
-        $a->{Field} cmp $b->{Field};
-}
-
-#---------------------------------------------------------------------
+# Decodes a date and returns the number of days from Jan 1, 1970.
 sub my_dtd {
   my $d = shift @_;
   return 0 if ($d eq "");
@@ -304,6 +301,15 @@ sub my_dtd {
   return(Date_to_Days($a[0],$a[1],$a[2]));
 }
   
+#---------------------------------------------------------------------
+# sort matches by week then time then field
+
+sub byweektimefield {
+  $a->{Week} <=> $b->{Week} ||
+    $a->{Time} cmp $b->{Time} ||
+        $a->{Field} cmp $b->{Field};
+}
+
 #---------------------------------------------------------------------
 # sort matches by date then time then field
 
@@ -317,20 +323,20 @@ sub bydatetimefield {
 #---------------------------------------------------------------------
 # If $new is blank, update all dates...  I think.
 sub updateweekdates {
+  my $week = shift;
   my $old = shift;
   my $new = shift;
   
-  print "updateweekdates(\"$old\",\"$new\")\n";
-  
+  print "updateweekdates($week, \"$old\",\"$new\")\n";
+
+  # check for bogus inputs
+  if ($new eq "" and $old eq "") {
+    return 0;
+  }
   my %dates;
   my $found=0;
-  foreach my $match (sort byweektimefield @matches) {
-    # This never matches... I think.
-    if ($old eq "" && $new eq "") {
-      print "WARNING, was this supposed to match?\n";
-      $match->{"Date"} = "$old";
-    }
-    elsif ($match->{"Date"} eq $old) {
+  foreach my $match (sort bydatetimefield @matches) {
+    if ($match->{"Date"} eq $old && $match->{"Week"} == $week) {
       $match->{"Date"} = "$new";
       $match->{"DateOrig"} = "$old";
       print "  match->{Date} = ", $match->{Date}, "\n";
@@ -348,13 +354,32 @@ sub updateweekdates {
 sub week2date {
   my $w = shift;
 
-  foreach my $match (sort byweektimefield @matches) {
+  foreach my $match (sort bydatetimefield @matches) {
     if ($match->{"Week"} == $w) {
       my $d = $match->{Date};
       #print "Week = $w, Date = $d\n";
       return $d;
     }
   }
+}
+
+#---------------------------------------------------------------------
+# Input:  Date
+# Return: Week number
+# Notes:  All matches are on the same date.
+
+sub date2week {
+  my $d = shift;
+
+  foreach my $match (sort bydatetimefield @matches) {
+    if ($match->{"Date"} eq $d) {
+      my $w = $match->{Week};
+      #print "Week = $w, Date = $d\n";
+      return $w;
+    }
+  }
+  # Error condition...
+  return 0;
 }
 
 #---------------------------------------------------------------------
@@ -434,6 +459,26 @@ sub penalty_del {
 }
 
 #---------------------------------------------------------------------
+# Checks a global array of dates which are not allowed to be used.
+# Might need to be changed into a callback which pulls out the dates
+# to dis-allow instead, but that's easy to do...
+
+sub dateentry_cfg {
+  my(%args) = @_;
+
+  if ($args{-date}) {
+    my($day,$month,$year) = @{ $args{-date} };
+    my $dw = $args{-datewidget};
+    my $grep = scalar(grep(m/$month\/$day\/$year/, @blockdates));
+    if ($grep != 0) {
+      if (defined $dw) {
+	$dw->configure(-state => 'disabled');
+      }
+    }
+  }
+}
+
+#---------------------------------------------------------------------
 # Change the date of a match
 
 sub match_reschedule {
@@ -442,6 +487,11 @@ sub match_reschedule {
 
   print "match_reschedule($w)\n";
   
+  # Update the blockdates before we reschedule.
+  foreach my $i (&get_match_dates) { 
+    push @blockdates, $i->[1];
+  }
+
   my $old_date = &week2date($w);
   my $new_date = "";
   
@@ -450,7 +500,10 @@ sub match_reschedule {
                                -default_button => 'Ok');
   $dialog->add('Label', -text => "Old Date: $old_date")->pack(-side => 'top');
   $dialog->add('Label', -text => "New Date (MM/DD/YYYY)")->pack(-side => 'left');
-  $dialog->add('DateEntry', -textvariable => \$new_date, -width => 10)->pack(-side => 'left');
+  $dialog->add('DateEntry', -textvariable => \$new_date, 
+	       -width => 12,
+	       -configcmd => \&dateentry_cfg)->pack(-side => 'left');
+
   
   my $ok = 1;
   while ($ok) {
@@ -460,8 +513,13 @@ sub match_reschedule {
       print "New Date = $new_date\n";
       if ($new_date =~ m/^\d\d\/\d\d\/\d\d\d\d$/) {
         $ok--;
-        my $num_matches = &updateweekdates($old_date,$new_date);
+
+	# Gotta be careful here... don't allow matches on an existing
+	# date!  Or at least also use week number to keep them sane...
+	
+        my $num_matches = &updateweekdates($w,$old_date,$new_date);
 	&update_datelist($match_datelist);
+	
       }
       else {
         $top->messageBox(
@@ -480,22 +538,22 @@ sub match_reschedule {
 
 #---------------------------------------------------------------------
 sub mk_results_rpt {
-  my $w = shift;
+  my $date = shift;
   my $fh = shift;
   
-  print "mk_results_rpt($w,FH)\n";
+  print " mk_results_rpt($date,FH)\n";
 
-  my $d = &week2date($w);
+  my $week = &date2week($date);
   my ($h, $hc, $hs);
   my ($a, $ac, $as);
 
-  my $ws = "$w ($d)";
+  my $ws = "$week ($date)";
 
   $^L = "";   # Turn off outputting formfeed when we get to a new page.
 format RESULTS_TOP =
 
   Results:  Week @<<<<<<<<<<<<<<<<<<<<<<<
-                $ws
+                 $ws
 
 .
 
@@ -524,14 +582,15 @@ format RESULTS =
 
 #---------------------------------------------------------------------
 sub mk_standings_rpt {
-  my $week = shift;
+  my $date = shift;
   my $fh = shift;
 
-  print "mk_standings_rpt($week,FH)\n";
+  print " mk_standings_rpt($date,FH)\n";
 
   my ($n, $team, $w, $t, $l, $f, $c, $gf, $ga, $pen, $pts, $d);
+  my $week = &date2week($date);
 
-  $d = "$week, (" . &week2date($week) . ")";
+  $d = "$week ($date)";
 
 format STANDINGS_TOP =
 
@@ -552,7 +611,7 @@ format STANDINGS =
   $fh->autoflush(1);
   $fh->format_lines_left(0);
 
-  &update_standings($week);
+  &update_standings($date);
   for (my $i = 1; $i <= $numteams; $i++) {
         $n    = $standings{$i}->{TEAMNUM};
         $team = $standings{$i}->{TEAM};
@@ -575,13 +634,13 @@ sub mk_penalties {
   my $curweek = shift;
   my $fh = shift;
 
-  print "mk_penalties($week,FH)\n";
+  print " mk_penalties($week,FH)\n";
 
   # Take hash of penalties per-team and convert into a date/team
   # sorted list.
   my @penalties;
 
-  foreach my $m (sort byweektimefield @matches) {
+  foreach my $m (sort bydatetimefield @matches) {
 	my $matchweek = $m->{"Week"};
 	if ($matchweek <= $curweek) {
 	  
@@ -594,7 +653,7 @@ sub mk_penalties {
 sub mk_notes {
   my $fh = shift;
 
-  print "mk_notes(FH)\n";
+  print " mk_notes(FH)\n";
 
   print $fh "\n\n";
   print $fh "  Notes:\n";
@@ -602,24 +661,23 @@ sub mk_notes {
 }
 
 #---------------------------------------------------------------------
-# TODO - fix game start time in reports
+# TODO - fix game start time in reports, use $curdate instead of $curweek.
+
 sub mk_schedule_rpt {
-  my $week = shift;
+  my $date = shift;
   my $fh = shift;
 
-  print "mk_schedule_rpt($week,$fh)\n";
-
-  $week++;
-  my $nextweek = $week + 1;
-  my $prevtime = "";
-  my $prevfield = "";
+  print " mk_schedule_rpt($date,<FH>)\n";
 
   my ($time, $field, $home,$away);
 
-  my $weekdate = &week2date($week);
-  print "  Weekdate = $weekdate ($week)\n";
-  my $nextweekdate = &week2date($nextweek);
-  
+  my $week = &date2week($curdate);
+  print "  Weekdate = $date ($week)\n";
+
+  my $nextweekdate = &get_next_match_date($date);
+  my $nextweek = &date2week($nextweekdate);
+  print "  Next date = $nextweekdate ($nextweek)\n";
+
   # TODO: Fix lookup of who is lining (if any) fields
   my $line_this_week = $lining_team{$week} || "<unknown>";
   my $line_next_week = $lining_team{$nextweek} || "<unknown>";
@@ -627,7 +685,7 @@ sub mk_schedule_rpt {
 format SCHEDULE_TOP = 
 
   Schedule: @<<<<<<<<<<<<<<
-             $weekdate
+             $nextweekdate
 
       Time    Field      Home                   Away
       ------  -------    ------------------     ------------------
@@ -643,14 +701,15 @@ format SCHEDULE =
   $fh->autoflush(1);
   $fh->format_lines_left(0);
 
+  # Should not print anything if $nextweekdate is ""
   foreach my $m (sort bydatetimefield @matches) {
-        if ($m->{"Week"} == $week) {
-          $time = $m->{"Time"};
-          $field = $m->{"Field"};
-          $home = $teams[$m->{"Home"}];
-          $away = $teams[$m->{"Away"}];
-          write $fh;
-        }
+    if ($m->{"Date"} eq $nextweekdate) {
+      $time = $m->{"Time"};
+      $field = $m->{"Field"};
+      $home = $teams[$m->{"Home"}];
+      $away = $teams[$m->{"Away"}];
+      write $fh;
+    }
   }
 
 format LINING_TOP =
@@ -679,7 +738,7 @@ format LINING =
 #---------------------------------------------------------------------
 sub mk_key_rpt {
   my $fh = shift;
-  print "mk_key_rpt(FH)\n";
+  print " mk_key_rpt(FH)\n";
 
   print $fh "\n";
   print $fh "Key\n";
@@ -716,7 +775,7 @@ sub make_report {
   my $week_date;
   my $file = "$base_rpt_file";
   if ($ext eq "YYYY-MM-DD") {
-    my ($m,$d,$y) = split('/',&week2date($curweek));
+    my ($m,$d,$y) = split('/',$curdate);
     $file = $base_rpt_file . "-". sprintf("%04s-%02s-%02s",$y,$m,$d);
     print "  ext = YYYY-MM-DD, file = $file\n";
   }
@@ -731,15 +790,16 @@ sub make_report {
     warn "Error writing week $curweek report to $file: $!\n";
   }  
   else {
-    &mk_results_rpt($curweek,\*RPT);
-    &mk_standings_rpt($curweek,\*RPT);
-    &mk_penalties($curweek,\*RPT);
+    &mk_results_rpt($curdate,\*RPT);
+    &mk_standings_rpt($curdate,\*RPT);
+    # TODO
+    # &mk_penalties($curdate,\*RPT);
     &mk_notes(\*RPT);
-    &mk_schedule_rpt($curweek,\*RPT);
+    &mk_schedule_rpt($curdate,\*RPT);
     &mk_key_rpt(\*RPT);
     close RPT;
     
-    print "\nWrote game report to $file.\n";
+    print "\nWrote game report to: $file\n";
   }
 }
 
@@ -799,6 +859,7 @@ sub fix_week_date_fmt {
 }
 
 #---------------------------------------------------------------------
+# Takes a date string and returns the date seven days on in MM/DD/YYYY
 sub inc_by_week {
   my $cur = shift;
   my ($y,$m,$d) = Decode_Date_US($cur);
@@ -1023,8 +1084,8 @@ sub accept_schedule {
   $top->configure(title => $desc);
   $win->destroy;
   &update_datelist($match_datelist);
-  &load_curmatch(1);
-  &update_standings(1);
+  &load_curmatch($match_dates[0]);
+  &update_standings($match_dates[0]);
 }
 
 #---------------------------------------------------------------------
@@ -1366,10 +1427,36 @@ sub init_game {
 }
 
 #---------------------------------------------------------------------
+# Takes current date, returns date of NEXT match, or "" if none.
+
+sub get_next_match_date {
+
+  my $cur_date = shift @_;
+  print "get_next_match_date($cur_date) = ";
+
+  my $found = 0;
+  foreach my $m (sort bydatetimefield @matches) {
+    # We will find four matches before we fall through...
+    if ($cur_date eq "$m->{Date}") {
+      $found++;
+    }
+    # We found a match, so this should be the first new date.
+    elsif ($found > 0) {
+      print "$m->{Date}\n";
+      return $m->{Date};
+    }
+  }
+  print "<empty>\n";
+  return "";
+}
+
+#---------------------------------------------------------------------
 # Accessor for date info stored in each match.  Returns an array of
-# date(s) for all matches, sorted by date.  Stupid format.  FIXME
+# arrays with date(s) for all matches, sorted by date.  Stupid format.
+# FIXME
 
 sub get_match_dates {
+
   my %wks;
   my $w;
   my @t;
@@ -1409,7 +1496,7 @@ sub hl_browse {
 
   #print "hl_browse($path) (week = $week, date = $date)\n";
 
-  &update_scores($week);
+  &update_scores($date);
 
   # Hack to try and update the matchlist when a set of matches is
   # completed, or updated to NOT be complete any more.
@@ -1430,7 +1517,7 @@ sub update_datelist {
   
   $hl->delete('all');
   foreach my $key (&get_match_dates) {
-    print "  get_match_dates: ". join(", ",@$key) . "\n";
+    #print "  get_match_dates: ". join(", ",@$key) . "\n";
     my $e = $hl->addchild("");
     $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
     $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
@@ -1458,6 +1545,7 @@ sub init_datelist {
                           -columns=> $#widths+1, -header => 1, 
 			  -height => 15,
 			  -selectmode => 'single', -width => $tw,
+			  
                          )->pack(-fill => 'y'); 
   $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
   $hl->header('create', 0, -itemtype => 'text', -text => "Week");
@@ -1544,23 +1632,25 @@ sub zero_standings {
 #---------------------------------------------------------------------
 sub update_standings {
 
-  my $week = shift;
+  my $date = shift;
 
   my %tmp;
-  #print "update_standings($week)\n";
+  print "update_standings($date)\n";
 
   # Zero out the standings first
   &zero_standings(\%standings);
   &zero_standings(\%tmp);
 
   # Save the current week data back to @matches
-  &save_curmatch($curweek);
+
+  # FIXME!
+  &save_curmatch($curdate);
 
   # Now go through all matches and figure out standings.
-  foreach my $m (sort byweektimefield @matches) {
-    my $matchweek = $m->{"Week"};
-    if ($matchweek <= $curweek) {
-	  # Do we have full scores recorded for this match yet?
+  foreach my $m (sort bydatetimefield @matches) {
+    my $matchdate = $m->{"Date"};
+    if (&my_dtd($matchdate) <= &my_dtd($curdate)) {
+      # Do we have full scores recorded for this match yet?
       if ($m->{"Complete"}) {
 	my $h = $m->{"Home"};
 	my $a = $m->{"Away"};
@@ -1584,35 +1674,35 @@ sub update_standings {
 	  $tmp{$h}->{W}++;
 	  $tmp{$h}->{GF} += 5;
 	}
-		else {
-		  # reset scores and such...
-		  #print "   HS: $m->{HomeScore}, AS: $m->{AwayScore}\n";
-		  
-		  $tmp{$h}->{GF} += $m->{HomeScore};
-		  $tmp{$a}->{GA} += $m->{HomeScore};
-		  $tmp{$h}->{GA} += $m->{AwayScore};
-		  $tmp{$a}->{GF} += $m->{AwayScore};
-		  
-		  if ($m->{HomeScore} < $m->{AwayScore}) {
-			$tmp{$h}->{L}++;
-			$tmp{$a}->{W}++;
-		  }
-		  elsif ($m->{HomeScore} == $m->{AwayScore}) {
-			$tmp{$h}->{T}++;
-			$tmp{$a}->{T}++;
-		  }
-		  elsif ($m->{HomeScore} > $m->{AwayScore}) {
-			$tmp{$h}->{W}++;
-			$tmp{$a}->{L}++;
-		  }
-		}
-		
-		$tmp{$h}->{C} += $m->{HomeCoed};
-		$tmp{$a}->{C} += $m->{AwayCoed};
-		
-		#print "  HomePoints = $m->{HomePoints}\n";
-		$tmp{$h}->{PTS} += $m->{HomePoints};
-		$tmp{$a}->{PTS} += $m->{AwayPoints};
+	else {
+	  # reset scores and such...
+	  #print "   HS: $m->{HomeScore}, AS: $m->{AwayScore}\n";
+	  
+	  $tmp{$h}->{GF} += $m->{HomeScore};
+	  $tmp{$a}->{GA} += $m->{HomeScore};
+	  $tmp{$h}->{GA} += $m->{AwayScore};
+	  $tmp{$a}->{GF} += $m->{AwayScore};
+	  
+	  if ($m->{HomeScore} < $m->{AwayScore}) {
+	    $tmp{$h}->{L}++;
+	    $tmp{$a}->{W}++;
+	  }
+	  elsif ($m->{HomeScore} == $m->{AwayScore}) {
+	    $tmp{$h}->{T}++;
+	    $tmp{$a}->{T}++;
+	  }
+	  elsif ($m->{HomeScore} > $m->{AwayScore}) {
+	    $tmp{$h}->{W}++;
+	    $tmp{$a}->{L}++;
+	  }
+	}
+	
+	$tmp{$h}->{C} += $m->{HomeCoed};
+	$tmp{$a}->{C} += $m->{AwayCoed};
+	
+	#print "  HomePoints = $m->{HomePoints}\n";
+	$tmp{$h}->{PTS} += $m->{HomePoints};
+	$tmp{$a}->{PTS} += $m->{AwayPoints};
       }
     }
   }
@@ -1621,15 +1711,11 @@ sub update_standings {
   
   my $x = 1;
   foreach my $idx (sort {
-    $tmp{$b}->{PTS} <=> $tmp{$a}->{PTS} 
-      ||
-    $tmp{$b}->{W} <=> $tmp{$a}->{W}
-      ||
-    $tmp{$b}->{L} <=> $tmp{$a}->{L}
-      ||
-    $tmp{$b}->{T} <=> $tmp{$a}->{T}
-      ||
-    ($tmp{$b}->{GF} - $tmp{$b}->{GA}) <=> ($tmp{$a}->{GF} - $tmp{$a}->{GA});
+    $tmp{$b}->{PTS} <=> $tmp{$a}->{PTS} ||
+      $tmp{$b}->{W} <=> $tmp{$a}->{W} ||
+	$tmp{$b}->{L} <=> $tmp{$a}->{L} ||
+	  $tmp{$b}->{T} <=> $tmp{$a}->{T} ||
+	    ($tmp{$b}->{GF} - $tmp{$b}->{GA}) <=> ($tmp{$a}->{GF} - $tmp{$a}->{GA});
   } keys %tmp) {
     #print "$idx  $teams{$idx}   $tmp{$idx}->{PTS}\n";
     foreach my $k (qw( W L T F C PTS GF GA RANK)) {
@@ -1644,13 +1730,13 @@ sub update_standings {
 #---------------------------------------------------------------------
 # Save the current info in %curmatch back to the @match array.
 sub save_curmatch {
-  my $w = shift;
+  my $date = shift;
 
   # Save current week data....
   my $idx = 1;
-  #print "save_curmatch($w)\n";
-  foreach my $m (sort byweektimefield @matches) {
-    if ($m->{"Week"} == $w) {
+  #print "save_curmatch($date)\n";
+  foreach my $m (sort bydatetimefield @matches) {
+    if ($m->{"Week"} eq "$date") {
       $m->{"HomePoints"} = $curmatch{$idx}->{"HomePoints"};
       $m->{"HomeScore"} = $curmatch{$idx}->{"HomeScore"};
       $m->{"HomeCoed"} = $curmatch{$idx}->{"HomeCoed"};
@@ -1674,26 +1760,23 @@ sub all_matches_complete {
   my $week = shift;
   my $complete;
 
-  print " all_matches_complete($week)";
-
   # This is inefficient, we should have a data structure tracking
   # this info instead.  Maybe when we go object oriented?
 
-  foreach my $m (sort byweektimefield @matches) {
+  # How about a counter called 'completed' which would be quicker to check?
+
+  foreach my $m (sort bydatetimefield @matches) {
     # We only care about $week, so skip any others, and return the
     # results once we find the right week.
 
     if ($m->{"Week"} == $week) {
       $complete = 0;
       for (my $i=1; $i <= $matches_per_week; $i++) {
-	print " $i=", $m->{"Complete"}, ", ";
 	$complete = $complete + $m->{"Complete"};
       }
       if ($complete == $matches_per_week) {
-	print " (return 1)\n";
 	return 1;
       }
-      print " (return 0)\n";
       return 0;
     }
   }
@@ -1722,17 +1805,19 @@ sub clear_match_display {
 }
 
 #---------------------------------------------------------------------
-# Load the current match with data, 
+# Load the current match hash $curmatch with data, 
 
 sub load_curmatch {
-  my $week = shift;
+  my $date = shift;
+
+  print "load_curmatch($date)\n";
 
   &clear_match_display;
 
   # Fill in the $curmatches with the proper match info
   my $curidx = 1;
-  foreach my $m (sort byweektimefield @matches) {
-    if ($m->{"Week"} == $week) {
+  foreach my $m (sort bydatetimefield @matches) {
+    if ($m->{"Date"} eq "$date") {
       $curmatch{$curidx}->{"HomePoints"} = $m->{"HomePoints"};
       $curmatch{$curidx}->{"HomeScore"} = $m->{"HomeScore"};
       $curmatch{$curidx}->{"HomeCoed"} = $m->{"HomeCoed"};
@@ -1761,20 +1846,21 @@ sub load_curmatch {
 
 #---------------------------------------------------------------------
 sub update_scores {
-  my $week = shift;
+  my $new_date = shift;
 
-  #print "update_scores($week)\n";
+  print "update_scores($new_date)\n";
+  my $new_week;
     
-  if ($curweek != $week) {
+  if ("$curdate" ne "$new_date") {
     my $curidx;
-    $weekdate = join("-", &week2date($week));
+    $new_week = join("-", &date2week($new_date));
     
-    &save_curmatch($curweek);
+    &save_curmatch($curdate);
     
-    &load_curmatch($week);
+    &load_curmatch($new_date);
     # Reset the Current Week finally.
-    $curweek = $week;
-    &update_standings($curweek);
+    $curdate = $new_date;
+    &update_standings($curdate);
     # Require a save if we're exiting...
     $NeedSave = 0;
   }
@@ -1788,25 +1874,7 @@ sub init_scores {
   my $header = $top->Frame;
   my $hf = $top->Frame;
   my $scoreframe = $top->Frame;
-  
-  # Week dropdown and dates, getting rid of them...
-  if (0) {
-    $header->BrowseEntry(-label => 'Week:', -variable => \$week, 
-			 -width => 2,
-			 -choices => \@weeks,
-			 -command => sub { &update_scores($week); },
-			)->pack(-side => 'left');
     
-    $weekdate=join("-",&week2date($week));
-    print "Weekdate = $weekdate\n";
-    $header->Label(-text => "Date: ", -width => 30, 
-		   -anchor => 'e')->pack(-side=>'left');
-    $header->Label(-textvariable => \$weekdate,
-		   -width => 12)->pack(-side=>'left');
-    
-    $header->pack(-side => 'top', -fill => 'x');
-  }
-  
   # Headers
   
   $hf->Label(-text => "Time", -width => 6)->pack(-side => 'left');
@@ -1915,10 +1983,20 @@ sub load_game_file {
       }
     }      
 
+    # Build the @match_dates array so we can quickly get our data,
+    # this will replace the $curweek index soonish
+    my $found = "";
+    undef @match_dates;
+    foreach my $m (sort bydatetimefield @matches) {
+      if ($m->{Date} ne "$found") { 
+	push @match_dates, $m->{Date}; 
+      }
+    }
+
     # Update the week display maybe?
-    &load_curmatch(1);
+    &load_curmatch($match_dates[0]);
     &update_datelist($match_datelist);
-    &update_standings(1);
+    &update_standings($match_dates[0]);
     
     # Update the rptfile name
     $rpt_file = $file;
@@ -2042,10 +2120,18 @@ sub write_game_file {
 }
 
 #---------------------------------------------------------------------
+sub playoffs_schedule {
+
+  # Select the number of rounds, 2 or 3
+
+
+}
+
+#---------------------------------------------------------------------
 sub playoffs_setup {
 
   # Select the number of rounds, 2 or 3
-  # 
+
 
 }
 
@@ -2227,20 +2313,20 @@ sub mkbuttons {
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save',-command => sub { 
-		     &save_curmatch($curweek);
+		     &save_curmatch($curdate);
 		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save As',-command => sub { 
-		     &save_curmatch($curweek);
+		     &save_curmatch($curdate);
 		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
   
-  $buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curweek) },
+  $buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curdate) },
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file,"YYYY-MM-DD") },
@@ -2349,18 +2435,18 @@ $m_season->command(-label => '~Open    ', -command => sub {
 		  );
 $m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
 $m_season->command(-label => '~Save    ', -command => sub { 
-		     &save_curmatch($curweek);
+		     &save_curmatch($curdate);
 		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  );
 $m_season->command(-label => '~Save As ', -command => sub { 
-		     &save_curmatch($curweek);
+		     &save_curmatch($curdate);
 		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 			   },
   );
 $m_season->separator();
 $m_season->command(-label => '~Update Standings', -command => sub {
-		     &update_standings($curweek) },
+		     &update_standings($curdate) },
 		  );
 $m_season->separator();
 $m_season->command(-label => '~Report  ', -command => sub {
@@ -2442,7 +2528,7 @@ $m_help->command(-label => 'About');
 
 my $scoreframe=$top->Frame(-border => 2, -relief => 'groove');
 &init_scores($scoreframe,$week);
-&update_scores($week);
+&update_scores($curdate);
 $scoreframe->pack(-side => 'top', -fill => 'x');
 
 my $bottomframe = $top->Frame();
@@ -2487,8 +2573,14 @@ if ($game_file ne "") {
 # - initial support for marking which week's are completely scored in datelist.
 #    - some bugs to fix there still
 # - adding in mailing support of reports.
-
-
+#
+# 2014/03/10 - v1.9
+# - sort games by date, not week.  
+# - updated all reports to fix updates when games are rescheduled.
+# - things have probably slowed down, oops.
+#  
+#  - TODO:   get playoffs scheduling working ASAP
+#
 #---------------------------------------------------------------------
 # POD docs... using pod2usage
 
