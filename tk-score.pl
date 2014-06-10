@@ -109,7 +109,7 @@ my @blockdates = ();
 
 my $dolining = 0;   # Do teams need to line during the season?
 
-# Week 0 is practice if used.  But numbering starts from 1!!!  Data
+# Week 0 is scrimmage if used.  But numbering starts from 1!!!  Data
 # Structure, which should be in an YAML file instead, though this way
 # it works for DSL stuff nicely.  Other leagues might have other
 # needs.  
@@ -162,8 +162,10 @@ my %sched_template =
 	  16 => [ "3-4", "8-9", "1-7", "2-5", "6", "3" ],
 	  17 => [ "2-6", "1-8", "3-5", "4-7", "9", "2" ],
 	  18 => [ "1-9", "2-7", "3-6", "4-5", "8", "2" ],
-	  19 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
-	  20 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ]
+	  19 => [ "Make-up", "Make-up", "Make-up", "Make-up", "", "tbd" ],
+	  20 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  21 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  22 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
   );
 
@@ -201,7 +203,7 @@ my $numteams = $teamcnt[0];
 
 my @playoff_rnds = qw(3 2);
 my @game_times = ("6pm & 7pm", "7pm & 8pm");
-my $playoff_rnd = $playoff_rnds[0];
+#my $num_playoffs = $playoff_rnds[0];
 
 # Two rounds of games for each team playing every other team.
 my $numweeks = ($numteams - 1) * 2;
@@ -297,7 +299,6 @@ sub my_dtd {
   return 0 if ($d eq "");
   #print "   my_dtd($d)\n";
   my @a = Decode_Date_US($d);
-  #print "        \@a = @a\n";
   return(Date_to_Days($a[0],$a[1],$a[2]));
 }
   
@@ -315,7 +316,7 @@ sub byweektimefield {
 
 sub bydatetimefield {
 
-  &my_dtd($a->{Date}) <=> &my_dtd($b->{Date}) ||
+  $a->{DTD} <=> $b->{DTD} ||
   $a->{Time} cmp $b->{Time} ||
   $a->{Field} cmp $b->{Field};
 }
@@ -338,6 +339,8 @@ sub updateweekdates {
   foreach my $match (sort bydatetimefield @matches) {
     if ($match->{"Date"} eq $old && $match->{"Week"} == $week) {
       $match->{"Date"} = "$new";
+      # Make sure we update the optimzed sort
+      $match->{"DTD"} = &my_dtd($match->{'Date'});
       $match->{"DateOrig"} = "$old";
       print "  match->{Date} = ", $match->{Date}, "\n";
       $found++;
@@ -483,16 +486,18 @@ sub dateentry_cfg {
 
 sub match_reschedule {
   my $top = shift;
-  my $w = shift;
+  my $old_date = shift;
+  
+  my $week = &date2week($old_date);
 
-  print "match_reschedule($w)\n";
+  print "match_reschedule($old_date)\n";
   
   # Update the blockdates before we reschedule.
   foreach my $i (&get_match_dates) { 
+    
     push @blockdates, $i->[1];
   }
 
-  my $old_date = &week2date($w);
   my $new_date = "";
   
   my $dialog = $top->DialogBox(-title => "Reschedule Match Date",
@@ -504,7 +509,6 @@ sub match_reschedule {
 	       -width => 12,
 	       -configcmd => \&dateentry_cfg)->pack(-side => 'left');
 
-  
   my $ok = 1;
   while ($ok) {
     my $answer = $dialog->Show( );
@@ -516,8 +520,9 @@ sub match_reschedule {
 
 	# Gotta be careful here... don't allow matches on an existing
 	# date!  Or at least also use week number to keep them sane...
+	# BUT!  We can allow them on Makeup days or Makeup/Playoff days.
 	
-        my $num_matches = &updateweekdates($w,$old_date,$new_date);
+        my $num_matches = &updateweekdates($week,$old_date,$new_date);
 	&update_datelist($match_datelist);
 	
       }
@@ -921,34 +926,57 @@ sub randomize_teams {
 # schedule which you need to approve.  FIXME: add summary and approval window.
 
 sub generate_schedule {
+  my $tmp_ref;
+
   my $win = shift @_;
-  my $num_ref = shift @_;
-  my $num = $$num_ref;
-  my $teamsref = shift @_;
-  my @team_entry = @$teamsref;
-  my $season_ref = shift @_;
-  my $season = $$season_ref;
-  my $start_date_ref = shift @_;
-  my $start_date = $$start_date_ref;
-  my $game_time_ref = shift @_;
-  my $game_time = $$game_time_ref;
-  my $practice = shift @_;
-  my $do_lining = shift @_;
-  my $hlb_ref = shift @_;
-  my $hlb = $$hlb_ref;
-  my $done_but_ref = shift @_;
-  my $done_but = $$done_but_ref;
+  $tmp_ref = shift @_;
+  my $num_teams = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my @team_names = @$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $season = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $start_date = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $game_time = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $num_playoffs = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $do_scrimmage = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $do_lining = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $sched_makeup = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $hlb = $$tmp_ref;
+
+  $tmp_ref = shift @_;
+  my $done_but = $$tmp_ref;
   
   # Validate inputs.  Should be in the Setup a New Season window, with
   # the 'Done' button disabled until all the required info is entered.
-  
+
+  print "generate_schedule()\n";
+  print "Num Teams:  $num_teams\n";
   print "Start Date: $start_date\n";
-  if (&validate($num,$start_date,$season,$teamsref)) {
+  print "Scrimmage = $do_scrimmage\n";
+  print "Schedule Makeup Week = $sched_makeup\n";
+  print "Playoff rounds = $num_playoffs\n";
+  if (&validate($num_teams,$start_date,$season,\@team_names)) {
     
     my $n=1;
-    foreach my $e (@team_entry) {
+    foreach my $e (@team_names) {
       my $g = $e->get;
-      if ($g ne "" && $n <= $num) {
+      if ($g ne "" && $n <= $num_teams) {
 	print "  $n -> $g\n";
 	$teams[$n++] = $g;
       }
@@ -974,23 +1002,35 @@ sub generate_schedule {
     # Store Season Setup options
     $season{Lining} = $do_lining;
     $season{Description} = "Description";
-    $season{Scrimmage} = $practice;
-    $season{Playoff_Rounds} = "";
-    $season{Number_Teams} = $num;
+    $season{Scrimmage} = $do_scrimmage;
+    $season{Playoff_Rounds} = $num_playoffs;
+    $season{Number_Teams} = $num_teams;
 
     # Initialize Matches array:
-    print "Num teams = $num\n";
-    my %template = %{$sched_template{$num}};
+    print "Num teams = $num_teams\n";
+    my %template = %{$sched_template{$num_teams}};
 
     # Actual week in schedule, template starts at zero for scrimmage
-    # week, which is not scored, but is scheduled.  
+    # week, which is not scored, but _is_ scheduled.  
     my $sched_week = 1;
-    $sched_week = 0 if $first_match_scrimmage;
+    $sched_week = 0 if $do_scrimmage;
     
+    my $matchid = 0;
+    my $is_lining; 
+    my $cnt_playoffs = 0;
     foreach my $tmpl_wk (sort { $a <=> $b } keys %template) {
-      next if ($tmpl_wk == 0 && $practice == 0);
+
+      # Skip scrimmage week(s) 
+      next if ($tmpl_wk == 0 && $do_scrimmage == 0);
+
       my @week_sched = @{$template{$tmpl_wk}};
-      
+
+      # Skip Makeup Week
+      next if ($sched_makeup != 1 && $week_sched[0] eq "Make-up");
+
+      # Count how many playoffs we scheduled vs Playoff Round.
+      next if ($week_sched[0] eq "Playoffs" && $cnt_playoffs++ == $num_playoffs);
+
       # Note!  Week Schedule assumes two fields and two games on each
       # field, along with a Bye and Lining column. 
 
@@ -1001,13 +1041,19 @@ sub generate_schedule {
       $lining_team{$week} = "";
       if ($do_lining) {
 	$dolining = 1;
-	my $is_lining = pop @week_sched;
-	if ($is_lining ne "") {
+	$is_lining = pop @week_sched;
+
+	# Numbers are team lining, otherwise skip
+	if ($is_lining =~ m/^\d+$/) {
 	  $lining_team{$week} = $teams[$is_lining];
 	} else {
 	  $lining_team{$week} = "tbd";
 	}
       }
+
+      # If we have nine teams, there will be a bye once a week for
+      # some team.  
+
       $bye_team{$week} = "" || "tbd";
       my $has_bye = pop @week_sched;
       if ($has_bye =~ m/^\d+$/) {
@@ -1020,43 +1066,64 @@ sub generate_schedule {
       # Now fill in the schedule for games this week.
       my $i = 0;
       my $game;
-      print "Week: $sched_week : ";
+      print "  Date: $cur_date : Week: $sched_week : ";
       foreach my $match (@week_sched) {
+	# copy our pre-setup match template and fill in the proper fields...
+	my $game = { };
+	my ($home, $away);
 	# Matches are #-#, if we don't see a -, it's something else
+	print " $match\t";
 	if ($match =~ m/^\d+\-\d+$/) {
-	  my ($home, $away) = split("-",$match);
-	  print " $match ";
-	  # copy our pre-setup match template and fill in the proper fields...
-	  $game = { };
-	  $game->{Date} = $cur_date;
-	  $game->{DateOrig} = "";
-	  $game->{Week} = $sched_week;
-	  $game->{Home} = $home;
-	  $game->{HomeScore} = "";
-	  $game->{HomeCoed} = 0;
-	  $game->{HomePoints} = 0;
-	  $game->{Away} = $away;
-	  $game->{AwayScore} = "";
-	  $game->{AwayCoed} = 0;
-	  $game->{AwayPoints} = 0;
-	  $game->{Complete} = 0;
-	  
-	  # Template assumes two games at 7pm, then
-	  # two at 8pm, using Fields 1 & 2, in that order. 
-	  if ($i == 0 || $i == 2) {
-	    $game->{Field} = "Field 1";
-	  } else {
-	    $game->{Field} = "Field 2";
-	  }
-	  if ($i == 0 || $i == 1) {
-	    $game->{Time} = $first_game_time;
-	  } else {
-	    $game->{Time} = $second_game_time;
-	  }
-	  $i++; 
-	  push @matches, $game;
+	  ($home, $away) = split("-",$match);
+	  # Game Type depends on sched_week and then makeup/playoffs counts.
+	  $game->{Type} = "G";
+	  $game->{Type} = "S" if ($sched_week == 0);
 	}
+	elsif ($match eq "Make-up" && $sched_makeup) {
+	  $game->{Type} = "M";
+	  $home = "tbd";
+	  $away = "tbd";
+	}
+	elsif ($match = "Playoffs") {
+	  $game->{Type} = "P";
+	  $home = "tbd";
+	  $away = "tbd";
+	}
+
+	$game->{Date} = $cur_date;
+	$game->{DTD} = &my_dtd($cur_date);
+	$game->{DateOrig} = "";
+	$game->{Week} = $sched_week;
+	$game->{Home} = $home;
+	$game->{HomeScore} = "";
+	$game->{HomeCoed} = 0;
+	$game->{HomePoints} = 0;
+	$game->{Away} = $away;
+	$game->{AwayScore} = "";
+	$game->{AwayCoed} = 0;
+	$game->{AwayPoints} = 0;
+	$game->{Complete} = 0;
+	$game->{MatchID} = $matchid++;
+	
+	# Template assumes two games at 6 or 7pm, then two at 7 or
+	# 8pm, using Field 1 then 2, in that order, for a total of
+	# four games. 
+	
+	if ($i == 0 || $i == 2) {
+	  $game->{Field} = "Field 1";
+	} else {
+	  $game->{Field} = "Field 2";
+	}
+	if ($i == 0 || $i == 1) {
+	  $game->{Time} = $first_game_time;
+	} else {
+	  $game->{Time} = $second_game_time;
+	}
+	$i++; 
+	push @matches, $game;
       }
+
+      print "\n";
       
       # Increment date by one week
       $cur_date = &inc_by_week($cur_date);
@@ -1116,6 +1183,52 @@ sub del_holiday {
 
 
 }
+
+#---------------------------------------------------------------------
+sub teams_view {
+
+}
+
+#---------------------------------------------------------------------
+sub teams_rename {
+
+  my $top = shift;
+  my $ref = shift;
+  my @ts = @$ref;
+  my $widget;
+  print "teams_rename()\n";
+
+  my $win = MainWindow->new();
+  $win->title("Rename Team");
+  $win->configure(-height => 400,
+		  -width => 400,
+		  -background => 'white',
+		  );
+  $win->optionAdd('*font*', "Helvetica 10");
+
+  my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+
+  for(my $i = 0; $i <= $#ts; $i++) {
+    next if (!defined $ts[$i]);
+    $setup_fr->Entry(-textvariable => \$ts[$i], -width => '20')->
+      pack(-side => 'top');
+  }
+  $setup_fr->pack(-side => 'top', -fill => 'x');
+
+  my $but_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+  my $done_but = $but_fr->Button(-text => "Done", -command => [ $win => 'destroy' ]);
+  my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
+
+  # Spacer frames
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $done_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $cancel_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+
+  $but_fr->pack(-side => 'top', -fill => 'x');
+}
+
 
 #---------------------------------------------------------------------
 # Creates a PDF file which can be emailed to manager(s) for each team
@@ -1250,8 +1363,10 @@ sub init_game {
   print "init_game()\n";
 
   my $game_time = $game_times[0];
+  my $playoff_cnt = $playoff_rnds[0];
   my $first_match_scrimmage = 0;
   my $teams_line_fields = 0;
+  my $schedule_makeup = 1;
   my $start_date = "";
   my $descrip = "";
 
@@ -1291,7 +1406,7 @@ sub init_game {
 	)->pack(-side => 'top');
   
   $setup_fr->BrowseEntry(-label => 'Playoff Rounds',
-			 -variable => \$playoff_rnd,
+			 -variable => \$playoff_cnt,
 			 -width => 3,
 			 -choices => \@playoff_rnds,
 			)->pack(-side => 'top');
@@ -1308,6 +1423,10 @@ sub init_game {
   
   $setup_fr->Checkbutton(-variable => \$teams_line_fields,
 			 -text => "Teams Line Fields?",
+			)->pack(-side => 'top', -fill => 'x');
+  
+  $setup_fr->Checkbutton(-variable => \$schedule_makeup,
+			 -text => "Schedule a makeup Week?",
 			)->pack(-side => 'top', -fill => 'x');
   
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
@@ -1409,8 +1528,9 @@ sub init_game {
 				-command =>  [
 					      \&generate_schedule, $win, \$numteams,
 					      \@entries, \$descrip, \$start_date,
-					      \$game_time, \$first_match_scrimmage,
-					      \$teams_line_fields, \$hlb, \$done_but ] 
+					      \$game_time, \$playoff_cnt, \$first_match_scrimmage,
+					      \$teams_line_fields, \$schedule_makeup, \$hlb, 
+					      \$done_but ] 
 			       );
   
   # add in spacers...
@@ -1466,10 +1586,13 @@ sub get_match_dates {
   foreach my $m (@matches) {
     $w = $m->{'Week'};
 
-    # piss-poor inefficient....
+    # FIXME: piss-poor inefficient....
     $wks{$w}{COMP} = &all_matches_complete($w);
 
+    $wks{$w}{T} = $m->{'Type'};
     $wks{$w}{D} = $m->{'Date'};
+    # Optimize out Date::Calc Date_to_Days calls a bit.
+    $wks{$w}{DTD} = &my_dtd($m->{'Date'});
     if (defined $m->{"DateOrig"}) {
       $wks{$w}{O} = $m->{'DateOrig'};
     } else {
@@ -1477,9 +1600,11 @@ sub get_match_dates {
     }      
   }
 
-  foreach my $k (sort { &my_dtd($wks{$a}->{D}) <=> &my_dtd($wks{$b}->{D})} keys %wks) {
-    #print "key = $k, $wks{$k}->{D}, $wks{$k}->{O}\n";
-    push @t, [ $k, $wks{$k}{D}, $wks{$k}{O}, $wks{$k}{COMP} ];
+  # Returning an array of crap... should just be dates, used to index
+  # into the @matches array.  
+
+  foreach my $k (sort { $wks{$a}->{DTD} <=> $wks{$b}->{DTD} } keys %wks) {
+    push @t, [ $k, $wks{$k}{D}, $wks{$k}{O}, $wks{$k}{T},$wks{$k}{COMP} ];
   }
 
   return @t;
@@ -1510,6 +1635,7 @@ sub update_datelist {
 
   print "update_datelist()\n";
 
+  # Colors.  Wish I could change colors of box borders...
   $dls_red = $hl->ItemStyle('text', -foreground => '#800000', -background => "lightgrey"); 
   $dls_blue = $hl->ItemStyle('text', -foreground => '#000080', -background => "lightgrey", -anchor=>'w'); 
   $dls_green = $hl->ItemStyle('text', -foreground => 'green', -background => "lightgrey", -anchor=>'w'); 
@@ -1522,8 +1648,10 @@ sub update_datelist {
     $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
     $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
     $hl->itemCreate($e, 2, -itemtype=>'text', -text => $key->[2], -style=>$dls_blue); 
-    $hl->itemCreate($e, 3, -itemtype=>'text', -text => " ", -style=>$dls_blue); 
-    if ($key->[3]) {
+    $hl->itemCreate($e, 3, -itemtype=>'text', -text => $key->[3], -style=>$dls_blue); 
+
+    # If the scoring is complete, color it done.
+    if ($key->[4]) {
       $hl->itemConfigure($e, 0, -style => $dls_done);
       $hl->itemConfigure($e, 1, -style => $dls_done);
       $hl->itemConfigure($e, 2, -style => $dls_done);
@@ -1649,7 +1777,8 @@ sub update_standings {
   # Now go through all matches and figure out standings.
   foreach my $m (sort bydatetimefield @matches) {
     my $matchdate = $m->{"Date"};
-    if (&my_dtd($matchdate) <= &my_dtd($curdate)) {
+
+    if ($m->{"Type"} eq "G" && &my_dtd($matchdate) <= &my_dtd($curdate)) {
       # Do we have full scores recorded for this match yet?
       if ($m->{"Complete"}) {
 	my $h = $m->{"Home"};
@@ -1731,12 +1860,13 @@ sub update_standings {
 # Save the current info in %curmatch back to the @match array.
 sub save_curmatch {
   my $date = shift;
+  
+  print "save_curmatch($date)\n";
 
   # Save current week data....
   my $idx = 1;
-  #print "save_curmatch($date)\n";
   foreach my $m (sort bydatetimefield @matches) {
-    if ($m->{"Week"} eq "$date") {
+    if ($m->{"Date"} eq "$date") {
       $m->{"HomePoints"} = $curmatch{$idx}->{"HomePoints"};
       $m->{"HomeScore"} = $curmatch{$idx}->{"HomeScore"};
       $m->{"HomeCoed"} = $curmatch{$idx}->{"HomeCoed"};
@@ -1821,12 +1951,18 @@ sub load_curmatch {
       $curmatch{$curidx}->{"HomePoints"} = $m->{"HomePoints"};
       $curmatch{$curidx}->{"HomeScore"} = $m->{"HomeScore"};
       $curmatch{$curidx}->{"HomeCoed"} = $m->{"HomeCoed"};
-      $curmatch{$curidx}->{"HomeName"} = $teams[$m->{"Home"}];
-      
+      if ($m->{"Home"} =~ m/^\d+$/) {
+	$curmatch{$curidx}->{"HomeName"} = $teams[$m->{"Home"}];
+	$curmatch{$curidx}->{"AwayName"} = $teams[$m->{"Away"}];
+      }
+      else {
+	$curmatch{$curidx}->{"HomeName"} = $m->{"Home"};
+	$curmatch{$curidx}->{"AwayName"} = $m->{"Away"};
+      }      
+
       $curmatch{$curidx}->{"AwayPoints"} = $m->{"AwayPoints"};
       $curmatch{$curidx}->{"AwayScore"} = $m->{"AwayScore"};
       $curmatch{$curidx}->{"AwayCoed"} = $m->{"AwayCoed"};
-      $curmatch{$curidx}->{"AwayName"} = $teams[$m->{"Away"}];
       
       $curmatch{$curidx}->{"Time"} = $m->{"Time"};
       $curmatch{$curidx}->{"Field"} = $m->{"Field"};
@@ -1848,7 +1984,7 @@ sub load_curmatch {
 sub update_scores {
   my $new_date = shift;
 
-  print "update_scores($new_date)\n";
+  print "update_scores($new_date)  curdate = $curdate\n";
   my $new_week;
     
   if ("$curdate" ne "$new_date") {
@@ -1862,7 +1998,7 @@ sub update_scores {
     $curdate = $new_date;
     &update_standings($curdate);
     # Require a save if we're exiting...
-    $NeedSave = 0;
+    $NeedSave = 1;
   }
 }
 
@@ -1964,6 +2100,8 @@ sub chgcolor {
 sub load_game_file {
   my $file = shift;
 
+  my $matchid = 0;
+  my %matchids;
   if (-f $file) {
     my $data = LoadFile($file);
     
@@ -1973,15 +2111,40 @@ sub load_game_file {
     @teams = @{$data->{Teams}};
     @matches = @{$data->{Matches}};
 
-    # Make sure all dates are in the correct format:
+    # Data Sanity checks and optimizations
     foreach my $m (@matches) {
+      # Make sure all dates are in the correct format:
       if (defined($m->{"DateOrig"}) && $m->{"DateOrig"} ne "") {
 	$m->{"DateOrig"} = &fix_week_date_fmt($m->{"DateOrig"});
       }
       if ($m->{"Date"} ne "") {
 	$m->{"Date"} = &fix_week_date_fmt($m->{"Date"});
+	# Hopeful optimization when sorting the matches
+	$m->{"DTD"} = &my_dtd($m->{"Date"});
       }
-    }      
+      
+      # Look for MatchID, if not found, add it.
+      if (!defined($m->{"MatchID"})) {
+	$m->{"MatchID"} = $matchid;
+	$matchids{$matchid}++;
+	$matchid++;
+      }
+      else {
+	my $tmatchid = $m->{"MatchID"};
+	if (defined $matchids{$tmatchid}) {
+	  die "Error!  We have duplicated MatchIDs in $file\n\n";
+	}
+	else {
+	  $matchids{$tmatchid}++;
+	}
+      }    
+
+      # Look for Type, if not found assume "G" for Game.
+      if (!defined($m->{"Type"})) {
+	$m->{"Type"} = "G";
+      }
+
+    }
 
     # Build the @match_dates array so we can quickly get our data,
     # this will replace the $curweek index soonish
@@ -2056,7 +2219,7 @@ sub save_game_file_as {
   my $savefile = $fs->Show;
 
   if ($savefile eq "") {
-    print "Not saving the file...\n";
+    print "Not saving file: $savefile\n";
     return $gf;
   }
   else {
@@ -2106,6 +2269,11 @@ sub write_game_file {
   my $standingsref = shift;
   my $seasonref = shift;
 
+  print "write_game_file($gf, .... )\n";
+
+  # We could purge $matches[#]->{DTD} but we unconditionally re-create
+  # it on load, so that's ok. 
+
   my $data = { Teams => $teamref,
 	       Matches => $matchref,
 	       Standings => $standingsref,
@@ -2113,7 +2281,6 @@ sub write_game_file {
 	       Version => $gf_version,
 	     };
   
-  print "write_game_file($gf, .... )\n";
 
   DumpFile($gf,$data);
   $NeedSave = 0;
@@ -2202,7 +2369,7 @@ sub computepoints {
   # Now we score the damn thing, big ugly state table...
 
   if ($hs eq "" and $as eq "")  {
-    print "Home and Away empty\n";
+    #print " Home and Away empty\n";
     $curmatch{$idx}->{"HomePoints"} = 0;
     $curmatch{$idx}->{"AwayPoints"} = 0;
     $curmatch{$idx}->{"Complete"} = 0;
@@ -2211,7 +2378,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ($hs eq "" and $as =~ /\d+/) {
-    print "Home empty, Away scored.\n";
+    #print " Home empty, Away scored.\n";
     $curmatch{$idx}->{"HomePoints"} = 0;
     $curmatch{$idx}->{"AwayPoints"} = 0;
     $curmatch{$idx}->{"Complete"} = 0;
@@ -2220,7 +2387,7 @@ sub computepoints {
     $NeedSave = 1;
   }	
   elsif ($as eq "" and $hs =~ /\d+/) {
-    print "Away empty, Home scored.\n";
+    #print " Away empty, Home scored.\n";
     $curmatch{$idx}->{"HomePoints"} = 0;
     $curmatch{$idx}->{"AwayPoints"} = 0;
     $curmatch{$idx}->{"Complete"} = 0;
@@ -2230,7 +2397,7 @@ sub computepoints {
   }	
   # Double Forfeit = no points for anyone.
   elsif ($hs eq "F" and $as eq "F") {
-    print "Double Forfeit\n";
+    #print " Double Forfeit\n";
     $curmatch{$idx}->{"HomePoints"} = 0;
     $curmatch{$idx}->{"HomeCoed"} = 0;
     $curmatch{$idx}->{"AwayPoints"} = 0;
@@ -2241,7 +2408,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ($hs eq "F" and $as =~ m/^$|\d+/) {
-    print "Home Forfeit.\n";
+    #print " Home Forfeit.\n";
     $curmatch{$idx}->{"HomePoints"} = 0;
     $curmatch{$idx}->{"HomeCoed"} = 0;
     $curmatch{$idx}->{"AwayScore"} = "";
@@ -2252,7 +2419,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ($as eq "F" and $hs =~ m/^$|\d+/) {
-    print "Away Forfeit.\n";
+    #print " Away Forfeit.\n";
     $curmatch{$idx}->{"HomePoints"} = 6 + $curmatch{$idx}->{"HomeCoed"};
     $curmatch{$idx}->{"AwayPoints"} = 0;
     $curmatch{$idx}->{"AwayCoed"} = 0;
@@ -2263,7 +2430,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ($hs > $as) {
-    print "Home Wins.\n";
+    #print " Home Wins.\n";
     $curmatch{$idx}->{"HomePoints"} = 6 + $curmatch{$idx}->{"HomeCoed"};
     $curmatch{$idx}->{"AwayPoints"} = 2 + $curmatch{$idx}->{"AwayCoed"};
     $curmatch{$idx}->{"Complete"} = 1;
@@ -2272,7 +2439,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ( $hs == $as ) {
-    print "Tie.\n";
+    #print " Tie.\n";
     $curmatch{$idx}->{"HomePoints"} = 4 + $curmatch{$idx}->{"HomeCoed"}; 
     $curmatch{$idx}->{"AwayPoints"} = 4 + $curmatch{$idx}->{"AwayCoed"};
     $curmatch{$idx}->{"Complete"} = 1;
@@ -2281,7 +2448,7 @@ sub computepoints {
     $NeedSave = 1;
   }
   elsif ( $hs < $as ) {
-    print "Away Wins.\n";
+    #print " Away Wins.\n";
     $curmatch{$idx}->{"HomePoints"} = 2 + $curmatch{$idx}->{"HomeCoed"}; 
     $curmatch{$idx}->{"AwayPoints"} = 6 + $curmatch{$idx}->{"AwayCoed"};
     $curmatch{$idx}->{"Complete"} = 1;
@@ -2459,7 +2626,7 @@ $m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($to
 #---------------------------------------------------------------------
 # Match Menu
 $m_match->command(-label => 'Reschedule', -command => sub {
-		    &match_reschedule($top,$curweek);},
+		    &match_reschedule($top,$curdate);},
 		 );
 
 #---------------------------------------------------------------------
@@ -2512,7 +2679,8 @@ $m_roster->command(-label => 'Mail to Managers', -state => 'disable', -command =
 
 #---------------------------------------------------------------------
 # Teams Menu
-$m_teams->command(-label => 'View', -command => [ \&teams_view, $top, @teams ],);
+$m_teams->command(-label => 'View', -command => [ \&teams_view, $top, \@teams ],);
+$m_teams->command(-label => 'Rename', -command => [ \&teams_rename, $top, \@teams ],);
 
 #---------------------------------------------------------------------
 # Schedule Menu
@@ -2578,6 +2746,11 @@ if ($game_file ne "") {
 # - sort games by date, not week.  
 # - updated all reports to fix updates when games are rescheduled.
 # - things have probably slowed down, oops.
+#
+# 2014/03/17 - v1.10
+# - Add in initial support for game types:
+#   - (S)crimmage, (G)ame, (M)akeup, (P)layoff
+#   - think about how Makeup/Playoff option to be shown and handled.
 #  
 #  - TODO:   get playoffs scheduling working ASAP
 #
@@ -2628,8 +2801,26 @@ standings, rosters, teams, etc.
 
   =item TKS::Team, TKS::Match, TKS::Roster  should all be modules.
 
-
 =cut
+
+2014/03/17
+
+=item Instead of Weeks and Now dates as accessor for matches, we
+should probably use a unique MatchID value for each match, then we can
+sort by date and return MatchID(s) for a date, and then index into the
+master list of @matches using that value.  Simpler and easier and more
+efficient.  
+
+=item Match Type will be one of:
+
+=over 2
+=item Scrimmage: S
+=item Match: G
+=item Playoff: P
+=item Makeup: M
+
+=item Playoff/Makeup: PM, used when we have a three round playoff
+scheme, but might need to reschedule.  =back
 
 
 =head1 AUTHOR
