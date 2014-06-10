@@ -11,31 +11,44 @@ use lib "$ENV{HOME}/lib/perl";
 # Remove cwd
 no lib ".";
 
-use Tk;
-use Tk::HList;
-use Tk::ItemStyle;
-use Tk::DialogBox;
-use Tk::BrowseEntry;
-use Tk::FileSelect;
 use IO::Handle;
-use Data::Dumper;
-use Date::Calc qw(Decode_Date_US Delta_Days Add_Delta_Days);
+#use Data::Dumper;
+#use Date::Calc qw(Decode_Date_US Delta_Days Add_Delta_Days);
 use Getopt::Long;
+use List::Util 'shuffle';
 use Pod::Usage;
 
-eval "use Tk::DateEntry; 1" or 
-  die "you need the module Tk::DateEntry installed to run this program.\n";
+# Non-core Perl modules we require
+my $count = 0;
+foreach my $mod ("Tk", "Tk::BrowseEntry","Tk::DateEntry","Tk::HList","Tk::ItemStyle","Tk::DialogBox","Tk::Month", "Tk::FileSelect", "Date::Calc qw(Decode_Date_US Delta_Days Add_Delta_Days)") {
+  eval "use $mod;1";
+  if ($@) {
+    warn "  Missing: $mod\n";
+    $count++;
+  }
+}
+die "\nPlease install the above modules before you run this program.\n\n" if $count;
 
-eval "use Tk::Month; 1" or 
-  die "you need the module Tk::Month installed to run this program.\n";
+# Nice to have modules for making pretty reports.
+my $have_pdf = 1;
+$count = 0;
+foreach my $mod (qw(PDF::API2 PDF::Table)) {
+  eval "use $mod; 1";
+  if ($@) {
+    warn "  Missing: $mod\n";
+    $count++;
+    $have_pdf = 0;
+  }
+}
+warn "\nPlease install the above modules to generate PDF reports.\n\n" if $count;
+
 
 use YAML qw(DumpFile LoadFile);
 
-my $VERSION = "v1.5 (2013-03-03)";
+my $VERSION = "v1.6 (2013-04-05)";
 
 my $game_file = "DSL-2012-Outdoor.tks";
-my $rpt_file = $game_file;
-$rpt_file =~ s/\.tks$//;
+my $rpt_file;
 
 my $NeedSave = 0;
 
@@ -45,6 +58,8 @@ $|=1;
 #---------------------------------------------------------------------
 my @matches = ();
 my @scores = ( '','F',0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
+my %lining_team;
+my %bye_team;
 my $homeforfeit= 0;
 my $homecoed = 'no';
 my $homescore = " ";
@@ -61,7 +76,7 @@ my $notokcolor = 'darkgrey';
 my $okcolor    = 'lightgreen';
 
 # Format is # -> Name
-my %teams = ();
+my @teams;
 
 # Debugging and option parsing
 my $DEBUG;
@@ -74,41 +89,63 @@ my $initialize_season = 0;
 #---------------------------------------------------------------------
 
 my $dolining = 0;   # Do teams need to line during the season?
-my %lining = ( 1  => 1,
-               2  => 5, 3  => 5,
-               4  => 3, 5  => 3,
-               6  => 4, 7  => 4,
-               8  => 6, 9  => 6,
-               10 => 8, 11 => 8,
-               12 => 7, 13 => 7,
-               14 => 2, 15 => 2,
-               16 => "tbd", 17 => "tdb",
-  );
 
-# Week 0 is practice if used.  But numbering starts from 1!!!
-my %sched_template = ( 8 => {
-			     0  => [ "1-6", "2-3", "5-8", "4-7" ],
-			     1  => [ "1-2", "3-4", "5-6", "7-8" ],
-			     2  => [ "5-7", "6-8", "1-3", "2-4" ],
-			     3  => [ "4-8", "1-5", "2-6", "3-7" ],
-			     4  => [ "2-5", "3-8", "4-7", "1-6" ],
-			     5  => [ "3-6", "2-7", "1-8", "4-5" ],
-			     6  => [ "1-7", "4-6", "2-8", "3-5" ],
-			     7  => [ "4-1", "7-6", "8-5", "3-2" ],
-			     8  => [ "6-5", "4-3", "2-1", "8-7" ],
-			     9  => [ "7-5", "8-6", "3-1", "4-2" ],
-			     10 => [ "8-4", "5-1", "7-3", "6-2" ],
-			     11 => [ "8-3", "5-2", "7-4", "6-1" ],
-			     12 => [ "6-3", "7-2", "5-4", "8-1" ],
-			     13 => [ "6-4", "7-1", "8-2", "5-3" ],
-			     14 => [ "3-2", "8-5", "7-6", "4-1" ],
-			     15 => [ "Make-up", "Make-up", "Make-up", "Make-up" ],
-			     16 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ],
-			     17 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ],
-			     18 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ]
-			     },
-		       9 => { },
-		     );
+# Week 0 is practice if used.  But numbering starts from 1!!!  Data
+# Structure, which should be in an YAML file instead, though this way
+# it works for DSL stuff nicely.  Other leagues might have other
+# needs.  
+
+# %sched_template = ( Number_Teams => {
+#                     Week => [game,game,game,game,bye,lining],
+#                     ....
+#                    }
+#                  );    
+
+my %sched_template = 
+  ( 8 => {
+	  0  => [ "1-6", "2-3", "5-8", "4-7", "", "1" ],
+	  1  => [ "1-2", "3-4", "5-6", "7-8", "", "1" ],
+	  2  => [ "5-7", "6-8", "1-3", "2-4", "", "5" ],
+	  3  => [ "4-8", "1-5", "2-6", "3-7", "", "5" ],
+	  4  => [ "2-5", "3-8", "4-7", "1-6", "", "3" ],
+	  5  => [ "3-6", "2-7", "1-8", "4-5", "", "3" ],
+	  6  => [ "1-7", "4-6", "2-8", "3-5", "", "4" ],
+	  7  => [ "4-1", "7-6", "8-5", "3-2", "", "4" ],
+	  8  => [ "6-5", "4-3", "2-1", "8-7", "", "6" ],
+	  9  => [ "7-5", "8-6", "3-1", "4-2", "", "6" ],
+	  10 => [ "8-4", "5-1", "7-3", "6-2", "", "8" ],
+	  11 => [ "8-3", "5-2", "7-4", "6-1", "", "8" ],
+	  12 => [ "6-3", "7-2", "5-4", "8-1", "", "7" ],
+	  13 => [ "6-4", "7-1", "8-2", "5-3", "", "7" ],
+	  14 => [ "3-2", "8-5", "7-6", "4-1", "", "2" ],
+	  15 => [ "Make-up", "Make-up", "Make-up", "Make-up", "", "" ],
+	  16 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
+	  17 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
+	  18 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "" ],
+	 },
+    9 => {
+	  1  => [ "3-7", "5-9", "4-6", "2-8", "1", "9" ],
+	  2  => [ "1-2", "4-9", "5-7", "6-8", "3", "9" ],
+	  3  => [ "4-8", "1-3", "7-9", "5-6", "2", "8" ],
+	  4  => [ "3-8", "6-7", "1-4", "2-9", "5", "8" ],
+	  5  => [ "6-9", "7-8", "2-3", "1-5", "4", "6" ],
+	  6  => [ "1-6", "2-4", "3-9", "5-8", "7", "6" ],
+	  7  => [ "2-5", "1-7", "8-9", "3-4", "6", "5" ],
+	  8  => [ "4-7", "3-5", "1-8", "2-6", "9", "5" ],
+	  9  => [ "4-5", "3-6", "2-7", "1-9", "8", "4" ],
+	  10 => [ "2-8", "4-6", "5-9", "3-7", "1", "4" ],
+	  11 => [ "6-8", "5-7", "4-9", "1-2", "3", "7" ],
+	  12 => [ "5-6", "7-9", "1-3", "4-8", "2", "7" ],
+	  13 => [ "2-9", "1-4", "6-7", "3-8", "5", "1" ],
+	  14 => [ "1-5", "2-3", "7-8", "6-9", "4", "1" ],
+	  15 => [ "5-8", "3-9", "2-4", "1-6", "7", "3" ],
+	  16 => [ "3-4", "8-9", "1-7", "2-5", "6", "3" ],
+	  17 => [ "2-6", "1-8", "3-5", "4-7", "9", "2" ],
+	  18 => [ "1-9", "2-7", "3-6", "4-5", "8", "2" ],
+	  19 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ],
+	  20 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs" ]
+	 },
+  );
 
 my $match_template = { Week => 0,
                        Date => '',
@@ -125,22 +162,21 @@ my $match_template = { Week => 0,
                        Complete => 0,
                     };
 
-my $playoff_sched = { "Three Weeks, 8 Teams" => 
-		      { 1 => [ "1-8 (A)", "2-7 (B)", "3-6 (C)", "4-5 (D)" ], 
-			2 => [ "W:A-W:D (E)", "W:B-W:C (F)", "L:D-L:A (G)",
-			       "L:C-L:B (H)" ],
-			3 => [ "W:E-W:F (Final)", "L:E-L:F", "W:G-W:H",
-			       "L:G-L:H" ],
-		      },
-		      "Two Weeks, 8 Teams" => 
-		      { 1 => [ "1-4 (A)", "2-3 (B)", "5-8 (C)", "6-7 (D)" ], 
-			2 => [ "W:A-W:B (Final)", "L:A-L:B", "W:C-W:D", "L:C-L:D" ],
-		      },
+my $playoff_sched = 
+  { "Three Weeks, 8 Teams" => 
+    { 1 => [ "1-8 (A)", "2-7 (B)", "3-6 (C)", "4-5 (D)" ], 
+      2 => [ "W:A-W:D (E)", "W:B-W:C (F)", "L:D-L:A (G)", "L:C-L:B (H)" ],
+      3 => [ "W:E-W:F (Final)", "L:E-L:F", "W:G-W:H", "L:G-L:H" ],
+    },
+    "Two Weeks, 8 Teams" => 
+    { 1 => [ "1-4 (A)", "2-3 (B)", "5-8 (C)", "6-7 (D)" ], 
+      2 => [ "W:A-W:B (Final)", "L:A-L:B", "W:C-W:D", "L:C-L:D" ],
+    },
 		    };
 
 # Number of teams supported by schedules.
 my @teamcnt = sort(qw(8 9));
-my $maxnumteams = $teamcnt[$#teamcnt];
+my $max_numteams = $teamcnt[$#teamcnt];
 my $numteams = $teamcnt[0];
 
 my @playoff_rnds = sort(qw(2 3));
@@ -157,7 +193,6 @@ my $matches_per_week = 4;
 
 # Parse command line options.
 &parseopts;
-
 
 
 # Per-team standings.  Re-calculated depending on the week showing.
@@ -181,28 +216,28 @@ sub cleanup_and_exit {
 	my $text = "You have unsaved changes, do you want to Save and Exit, Exit without Save, or return to editing the	Season?";
 
 	my $dialog = $top->DialogBox(-title => "Unsaved changes!",
-								 -buttons => [ 'Save and Exit', 
-											   'Exit without Save',
-											   'Cancel', ],
-								 -default_button => 'Cancel');
+				     -buttons => [ 'Save and Exit', 
+						   'Exit without Save',
+						   'Cancel', ],
+				     -default_button => 'Cancel');
 	$dialog->add('Label', -text => $text, -width => '30');
-
+	
 	my $ok = 1;
 	while ($ok) {
 	  my $answer = $dialog->Show( );
-    
+	  
 	  return if ($answer eq "Cancel");
 	  exit if ($answer eq "Exit without Save");
 	  
 	  if ($answer eq "Save and Exit") {
-		&save_game_file_as($top, $game_file,
-						   \%teams,\@matches,\%standings,\%season);
-		exit;
+	    &save_game_file_as($top, $game_file,
+			       \@teams,\@matches,\%standings,\%season);
+	    exit;
 	  }
 	}
-  }
+      }
   else {
-	exit;
+    exit;
   }
 }
 
@@ -477,7 +512,7 @@ format STANDINGS =
         $c    = $standings{$i}->{C};
         $gf   = $standings{$i}->{GF};
         $ga   = $standings{$i}->{GA};
-		$pen  = $standings{$i}->{PCNT} || 0;
+	$pen  = $standings{$i}->{PCNT} || 0;
         $pts  = $standings{$i}->{PTS};
 
         write $fh;
@@ -532,8 +567,10 @@ sub mk_schedule_rpt {
   my $weekdate = &week2date($week);
   print "  Weekdate = $weekdate ($week)\n";
   my $nextweekdate = &week2date($nextweek);
-  my $weekstr = "$teams{$lining{$week}} ($weekdate)";
-  my $nextweekstr = "$teams{$lining{$nextweek}} ($nextweekdate)";
+  
+  # TODO: Fix lookup of who is lining (if any) fields
+  my $line_this_week = $lining_team{$week};
+  my $line_next_week = $lining_team{$nextweek};
 
 format SCHEDULE_TOP = 
 
@@ -558,8 +595,8 @@ format SCHEDULE =
         if ($m->{"Week"} == $week) {
           $time = $m->{"Time"};
           $field = $m->{"Field"};
-          $home = $teams{$m->{"Home"}};
-          $away = $teams{$m->{"Away"}};
+          $home = $teams[$m->{"Home"}];
+          $away = $teams[$m->{"Away"}];
           write $fh;
         }
   }
@@ -570,9 +607,9 @@ format LINING_TOP =
 format LINING =
 
   Lining:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-           $weekstr;
+           $line_this_week;
            @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-           $nextweekstr
+           $line_next_week;
 
 
 .
@@ -619,29 +656,29 @@ sub make_report {
   my $ext = shift;
 
   my $week_date = &week2date($curweek);
-  my $rpt_file = "";
+  my $file = "";
   if ($ext eq "YYYY-MM-DD") {
-	$rpt_file = "$base_rpt_file". "-$week_date";
+    $file = "$base_rpt_file". "-$week_date";
   }
   elsif ($ext eq "WEEK-##") {
-	$rpt_file = "$base_rpt_file". "-$curweek";
+    $file = "$base_rpt_file". "-$curweek";
   }
-
-  $rpt_file = $base_rpt_file . ".rpt";
-
-  if (!open(RPT, ">$rpt_file")) {
-    warn "Error writing week $curweek report to $rpt_file: $!\n";
+  
+  $file = $base_rpt_file . ".rpt";
+  
+  if (!open(RPT, ">$file")) {
+    warn "Error writing week $curweek report to $file: $!\n";
   }  
   else {
     &mk_results_rpt($curweek,\*RPT);
     &mk_standings_rpt($curweek,\*RPT);
-	&mk_penalties($curweek,\*RPT);
+    &mk_penalties($curweek,\*RPT);
     &mk_notes(\*RPT);
     &mk_schedule_rpt($curweek,\*RPT);
     &mk_key_rpt(\*RPT);
     close RPT;
-
-    print "\nWrote game report to $rpt_file.\n";
+    
+    print "\nWrote game report to $file.\n";
   }
 }
 
@@ -662,7 +699,7 @@ sub validate {
   my $start = shift @_;
   my $descrip = shift @_;
   my $tref = shift @_;
-  my %t = %$tref;
+  my @t_entry = @$tref;
 
   if ($start eq "") {
     error_msg("Need a start date.");
@@ -674,8 +711,8 @@ sub validate {
   }
   else {
     my $cnt=0;
-    foreach my $k (keys %t) {
-      $cnt++ if (defined $t{$k} && $t{$k} ne "");
+    foreach my $i (@t_entry) {
+      $cnt++ if ($i->get ne "");
     }
     if ($cnt < $num) {
       error_msg("You entered $cnt team names, you need at least $num.");
@@ -689,9 +726,9 @@ sub validate {
 sub inc_by_week {
   my $cur = shift;
   my ($y,$m,$d) = Decode_Date_US($cur);
-  print " inc_by_week($y/$m/$d) + 7d = ";
+  #print " inc_by_week($y/$m/$d) + 7d = ";
   ($y,$m,$d) = Add_Delta_Days($y,$m,$d,7);
-  print "  ($y/$m/$d)\n";
+  #print "  ($y/$m/$d)\n";
   $cur = "$m/$d/$y";
   return $cur;
 }
@@ -710,8 +747,36 @@ sub check_holidays {
     }
   }
 
-  print "check_holidays($cur) = $ishol\n";
+  #print "check_holidays($cur) = $ishol\n";
   return $ishol;
+}
+
+#---------------------------------------------------------------------
+# takes in a number of teams and a hash of team names and randomizes
+# them.  This looks involved, but it's because I pass in a hash of
+# entry values, which I want to randomize...
+
+sub randomize_teams {
+  my $ref = shift;
+
+  my @entry = @$ref;
+  my @h;
+
+  print "randomize_teams( ... )\n" if $DEBUG;
+
+  foreach my $e (@entry) {
+    my $g = $e->get;
+    push @h, $g unless $g eq "";
+    $e->delete(0,length($g));
+  }
+
+  for (my $i = 5; $i>0; $i--) {
+    @h = shuffle @h;
+  }
+
+  foreach my $e (@entry) {
+    $e->insert(0,shift @h || "");
+  }
 }
 
 #---------------------------------------------------------------------
@@ -723,7 +788,7 @@ sub generate_schedule {
   my $num_ref = shift @_;
   my $num = $$num_ref;
   my $teamsref = shift @_;
-  my %t = %$teamsref;
+  my @team_entry = @$teamsref;
   my $season_ref = shift @_;
   my $season = $$season_ref;
   my $start_date_ref = shift @_;
@@ -740,30 +805,33 @@ sub generate_schedule {
   
   print "Start Date: $start_date\n";
   if (&validate($num,$start_date,$season,$teamsref)) {
-    foreach my $n (sort keys %t) {
-      if ($n <= $num) {
-		print "  $n -> $t{$n}\n";
-		$teams{$n} = $t{$n};
+
+    my $n=1;
+    foreach my $e (@team_entry) {
+      my $g = $e->get;
+      if ($g ne "" && $n <= $num) {
+	print "  $n -> $g\n";
+	$teams[$n++] = $g;
       }
     }
 
-	# Get holidays, if any, to be skipped.
-	my $hlb_cnt = $hlb->size;
-	my @hols = $hlb->get(0,$hlb_cnt);
-	print "Holidays:\n";
-	foreach my $h (sort @hols) {
-	  print "  $h\n";
-	}
+    # Get holidays, if any, to be skipped.
+    my $hlb_cnt = $hlb->size;
+    my @hols = $hlb->get(0,$hlb_cnt);
+    print "Holidays:\n";
+    foreach my $h (sort @hols) {
+      print "  $h\n";
+    }
     print "\n";
-
+    
     my $cur_date = $start_date;
-	
-	# Check for a holiday on the start_date, not likely, but more
-	# durable...  Do this in a loop, since we can have holidays
-	# spanning multiple weeks.
-	while (&check_holidays($cur_date, @hols)) {
-	  $cur_date = &inc_by_week($cur_date);
-	}
+    
+    # Check for a holiday on the start_date, not likely, but more
+    # durable...  Do this in a loop, since we can have holidays
+    # spanning multiple weeks.
+    while (&check_holidays($cur_date, @hols)) {
+      $cur_date = &inc_by_week($cur_date);
+    }
     
     # Initialize Matches array:
     print "Num teams = $num\n";
@@ -776,70 +844,87 @@ sub generate_schedule {
       next if ($tmpl_wk == 0 && $practice == 0);
       my @week_sched = @{$template{$tmpl_wk}};
       
-      # Note!  Week Schedule assumes two fields and two games 
+      # Note!  Week Schedule assumes two fields and two games on each
+      # field, along with a Bye and Lining column. 
+
+      # Since we have SIX columns, pop off the last two, which are for
+      # byes[5] and lining[6].  This is ugly and I should just change
+      # the data structure.  TODO
+      
+      my $is_lining = pop @week_sched;
+      $lining_team{$week} = $teams[$is_lining];
+      $bye_team{$week} = "";
+      my $has_bye = pop @week_sched;
+      if ($has_bye =~ m/^\d+$/) {
+	$bye_team{$week} = $teams[$has_bye];
+      }
+      
       my $i = 0;
       my $game;
-	  print "Week: $sched_week : ";
+      print "Week: $sched_week : ";
       foreach my $match (@week_sched) {
-		my ($home, $away) = split("-",$match);
-		print " $match ";
-		# copy our pre-setup match template and fill in the proper fields...
-		$game = { };
-		$game->{Date} = $cur_date;
-		$game->{OrigDate} = "";
-		$game->{Week} = $sched_week;
-		$game->{Home} = $home;
-		$game->{HomeScore} = "";
-		$game->{HomeCoed} = 0;
-		$game->{HomePoints} = 0;
-		$game->{Away} = $away;
-		$game->{AwayScore} = "";
-		$game->{AwayCoed} = 0;
-		$game->{AwayPoints} = 0;
-		$game->{Complete} = 0;
-		
-		# Template assumes two games a 7pm, then two at 8pm, 
-		# using Fields 1 & 2 in that order.
-		if ($i == 0 || $i == 2) {
-		  $game->{Field} = "Field 1";
-		} else {
-		  $game->{Field} = "Field 2";
-		}
-		if ($i == 0 || $i == 1) {
-		  $game->{Time} = "7pm";
-		} else {
-		  $game->{Time} = "8pm";
-		}
-		$i++; 
-		push @matches, $game;
+	# Matches are #-#, if we don't see a -, it's something else
+	if ($match =~ m/^\d+\-\d+$/) {
+	  my ($home, $away) = split("-",$match);
+	  print " $match ";
+	  # copy our pre-setup match template and fill in the proper fields...
+	  $game = { };
+	  $game->{Date} = $cur_date;
+	  $game->{OrigDate} = "";
+	  $game->{Week} = $sched_week;
+	  $game->{Home} = $home;
+	  $game->{HomeScore} = "";
+	  $game->{HomeCoed} = 0;
+	  $game->{HomePoints} = 0;
+	  $game->{Away} = $away;
+	  $game->{AwayScore} = "";
+	  $game->{AwayCoed} = 0;
+	  $game->{AwayPoints} = 0;
+	  $game->{Complete} = 0;
+	  
+	  # Template assumes two games a 7pm, then two at 8pm, 
+	  # using Fields 1 & 2 in that order.
+	  if ($i == 0 || $i == 2) {
+	    $game->{Field} = "Field 1";
+	  } else {
+	    $game->{Field} = "Field 2";
+	  }
+	  if ($i == 0 || $i == 1) {
+	    $game->{Time} = "7pm";
+	  } else {
+	    $game->{Time} = "8pm";
+	  }
+	  $i++; 
+	  push @matches, $game;
+	}
       }
       
       # Increment date by one week
-	  $cur_date = &inc_by_week($cur_date);
-	  while (&check_holidays($cur_date,@hols)) {
-		$cur_date = &inc_by_week($cur_date);
-	  }
+      $cur_date = &inc_by_week($cur_date);
+      while (&check_holidays($cur_date,@hols)) {
+	$cur_date = &inc_by_week($cur_date);
+      }
       $sched_week++;
     }
     
-	# Need to put in a message box here which enables the 'Done'
-	# button if it's all ok.  
+    # Need to put in a message box here which enables the 'Done'
+    # button if it's all ok.  
     $done_but->configure(-state => 'normal');
-
-	my $dialog = $win->DialogBox(-title => 'Accept this new Season?',
-								 -buttons => [ qw(Yes No) ],
-	  );
-	my $ans = $dialog->Show();
+    
+    my $dialog = $win->DialogBox(-title => 'Accept this new Season?',
+				 -buttons => [ qw(Yes No) ],
+				);
+    my $ans = $dialog->Show();
 	
-	if ($ans eq "Yes") {
-	  # Now update all the global stuff and displays....
-	  &load_datelist($match_datelist);
-	  &load_curmatch(1);
-	  &update_standings(1);
-	}
-	else {
-	  print "Try again please...\n\n";
-	}
+    if ($ans eq "Yes") {
+      # Now update all the global stuff and displays....
+      &load_datelist($match_datelist);
+      &load_curmatch(1);
+      &update_standings(1);
+    }
+    else {
+      print "Try again please...\n\n";
+    }
   }
 }
 
@@ -928,31 +1013,31 @@ sub init_game_file {
   $t->pack(-side => 'top', -fill => 'x');
   
   $setup_fr->BrowseEntry(-label => 'Num Teams',
-				   -variable => \$numteams,
-				   -width => 3,
-				   -choices => \@teamcnt,
+			 -variable => \$numteams,
+			 -width => 3,
+			 -choices => \@teamcnt,
 	)->pack(-side => 'top');
   
   $setup_fr->BrowseEntry(-label => 'Playoff Rounds',
-						 -variable => \$playoff_rnd,
-						 -width => 3,
-						 -choices => \@playoff_rnds,
-	)->pack(-side => 'top');
+			 -variable => \$playoff_rnd,
+			 -width => 3,
+			 -choices => \@playoff_rnds,
+			)->pack(-side => 'top');
   
   $setup_fr->Checkbutton(-variable => \$first_match_practice,
-						 -text => "First Match for Practice? ",
-	)->pack(-side => 'top', -fill => 'x');
+			 -text => "First Match for Practice? ",
+			)->pack(-side => 'top', -fill => 'x');
   
   $setup_fr->Checkbutton(-variable => \$teams_line_fields,
-						 -text => "Teams Line Fields?",
-	)->pack(-side => 'top', -fill => 'x');
+			 -text => "Teams Line Fields?",
+			)->pack(-side => 'top', -fill => 'x');
   
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $t->Label(-text => 'Start Date:')->pack(-side => 'left');
   $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');
   $t->pack(-side => 'top', -fill => 'x');
   
-    my %hols;
+  my %hols;
   my $holiday;
   my $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $tmf->Label(-text => 'Holiday(s):')->pack(-side => 'left');
@@ -962,36 +1047,43 @@ sub init_game_file {
   # above it within the temp_middle_frame (tmf).  
   
   my $hlb = $setup_fr->Scrolled("Listbox", -scrollbars => "e",
-								-height => 3, -selectmode => "single");
+				-height => 3, -selectmode => "single");
   
   my $mfab = $tmf->Button(-text => 'Add',-command => sub {
-	if ($holiday ne '') {
-	  $hlb->insert('end',$holiday);
-	  $holiday = '';
-	} }
-	);
+			    if ($holiday ne '') {
+			      $hlb->insert('end',$holiday);
+			      $holiday = '';
+			    } }
+			 );
   $mfab->pack(-side => 'left', -fill => 'x');
   
   my $mfdb = $setup_fr->Button(-text => 'Delete Holiday',-command => sub
-							   { $hlb->delete($hlb->curselection) if $hlb->curselection;
-								 $holiday = ''; }
-	);
+			       { $hlb->delete($hlb->curselection) if $hlb->curselection;
+				 $holiday = ''; }
+			      );
   
   $tmf->pack(-side => 'top', -fill => 'x');
   $hlb->pack(-side => 'top', -fill => 'x');
   $mfdb->pack(-side => 'bottom', -fill => 'x');
   
   # Middle Frame: Teams
-  my %temp;
+  my @teams_temp;
+  my @entries;
   $team_fr->Label(-text => 'Team Names:')->pack(-side => 'top');
-  for (my $i=1; $i <= $maxnumteams; $i++) {
+  for (my $i=1; $i <= $max_numteams; $i++) {
     my $f = $team_fr->Frame();
     $f->Label(-text => " $i ", -width => 6)->pack(-side => 'left');
-    $f->Entry(-textvariable => \$temp{$i}, 
-              -width => 25,
-	  )->pack(-side => 'left');
+    push @entries, $f->Entry(-textvariable => \$teams_temp[$i], 
+			     -width => 25,
+			    )->pack(-side => 'left');
     $f->pack(-side => 'top', -fill => 'x');
   }
+
+  # Let's me be lazy and enter team names, then randomize them.
+  my $rand_but = $team_fr->Button(-text => 'Randomize Teams', 
+				  -command => [ \&randomize_teams, \@entries ],
+				 );
+  $rand_but->pack(-side => 'bottom', -fill => 'x');
 
 
   # Right Frame: Proposed Schedule
@@ -1034,12 +1126,13 @@ sub init_game_file {
   my $done_but = $but_fr->Button(-text => "Done", -state => 'disabled',
 							 -command => [ $win => 'destroy' ]	);
   
-  my $gen_but = $but_fr->Button(-text => "Generate Schedule", -command =>  [
-							   \&generate_schedule, $win, \$numteams,
-							   \%temp, \$descrip, \$start_date,
-							   \$first_match_practice,
-							   \$teams_line_fields, \$hlb, \$done_but ] 
-	);
+  my $gen_but = $but_fr->Button(-text => "Generate Schedule", 
+				-command =>  [
+					      \&generate_schedule, $win, \$numteams,
+					      \@entries, \$descrip, \$start_date,
+					      \$first_match_practice,
+					      \$teams_line_fields, \$hlb, \$done_but ] 
+			       );
   
   # add in spacers...
   $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
@@ -1099,10 +1192,11 @@ sub load_datelist {
   $dls_done = $hl->ItemStyle('text', -background => 'lightgreen');
   
   foreach my $key (&weekanddate) {
-        my $e = $hl->addchild("");
-        $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
-        $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
-        $hl->itemCreate($e, 2, -itemtype=>'text', -text => "          ", -style=>$dls_blue); 
+    my $e = $hl->addchild("");
+    $hl->itemCreate($e, 0, -itemtype=>'text', -text => $key->[0], -style=>$dls_red); 
+    $hl->itemCreate($e, 1, -itemtype=>'text', -text => $key->[1], -style=>$dls_blue); 
+    $hl->itemCreate($e, 2, -itemtype=>'text', -text => "          ", -style=>$dls_blue); 
+    $hl->itemCreate($e, 3, -itemtype=>'text', -text => " ", -style=>$dls_blue); 
   }
 }
 
@@ -1112,8 +1206,8 @@ sub init_datelist {
   print "init_datelist()\n";
 
   my $hl = $top->Scrolled('HList', -scrollbars => 'ow',
-                          -columns=>3, -header => 1, 
-			  -selectmode => 'single', -width => 40,
+                          -columns=>4, -header => 1, 
+			  -selectmode => 'single', -width => 46,
                          )->pack(-fill => 'x'); 
   $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
   $hl->header('create', 0, -itemtype => 'text', -text => "Week");
@@ -1122,6 +1216,8 @@ sub init_datelist {
   $hl->columnWidth(1, -char => 16);
   $hl->header('create', 2, -itemtype => 'text', -text => "Old Date");
   $hl->columnWidth(2, -char => 16);
+  $hl->header('create', 3, -itemtype => 'text', -text => "Type");
+  $hl->columnWidth(3, -char => 6);
 
   &load_datelist($hl);
   return $hl;
@@ -1152,12 +1248,13 @@ sub init_standings {
   $ff->Label(-text => "Rank", -width => 4)->pack(-side => 'left');
   $ff->pack(-side => 'top', -fill => 'x');
 
-  foreach (my $x=1; $x <= $numteams; $x++) {
+  # We have to go by the MAXIMUM number of teams that could play.
+  foreach (my $x=1; $x <= $max_numteams; $x++) {
     my $ff = $f->Frame()->pack(-side => 'top', -fill => 'x');
 
     $ff->Label(-text => $x, -width => 2)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{TEAM}, -width => 20)->pack(-side => 'left');
-	$standings{$x}->{TEAM} = $teams{$x};
+    $standings{$x}->{TEAM} = $teams[$x];
     $ff->Label(-textvariable => \$standings{$x}->{W}, -width => 4)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{T}, -width => 4)->pack(-side => 'left');
     $ff->Label(-textvariable => \$standings{$x}->{L}, -width => 4)->pack(-side => 'left');
@@ -1289,7 +1386,7 @@ sub update_standings {
       $standings{$x}->{$k} = $tmp{$idx}->{$k};
     }
     $standings{$x}->{TEAMNUM} = $idx;
-    $standings{$x}->{TEAM} = $teams{$idx};
+    $standings{$x}->{TEAM} = $teams[$idx];
     $x++;
   }
 }
@@ -1355,12 +1452,12 @@ sub load_curmatch {
       $curmatch{$curidx}->{"HomePoints"} = $m->{"HomePoints"};
       $curmatch{$curidx}->{"HomeScore"} = $m->{"HomeScore"};
       $curmatch{$curidx}->{"HomeCoed"} = $m->{"HomeCoed"};
-      $curmatch{$curidx}->{"HomeName"} = $teams{$m->{"Home"}};
+      $curmatch{$curidx}->{"HomeName"} = $teams[$m->{"Home"}];
       
       $curmatch{$curidx}->{"AwayPoints"} = $m->{"AwayPoints"};
       $curmatch{$curidx}->{"AwayScore"} = $m->{"AwayScore"};
       $curmatch{$curidx}->{"AwayCoed"} = $m->{"AwayCoed"};
-      $curmatch{$curidx}->{"AwayName"} = $teams{$m->{"Away"}};
+      $curmatch{$curidx}->{"AwayName"} = $teams[$m->{"Away"}];
       
       $curmatch{$curidx}->{"Time"} = $m->{"Time"};
       $curmatch{$curidx}->{"Field"} = $m->{"Field"};
@@ -1453,15 +1550,15 @@ sub init_scores {
     $f->Label(-textvariable => \$curmatch{$m}->{HomeName}, -anchor =>
 			  'w', -width => 20)->pack(-side => 'left');
     $f->BrowseEntry(-label => 'Score',
-					-variable => \$curmatch{$m}->{"HomeScore"},	
-					-width => 3,
-					-listwidth => 20,
-					-choices => \@scores,
-					-browsecmd => [ \&computepoints, $m,"Home" ],
-					# Only allow numbers or the letter F to be entered
-					-validate => 'key',
-					-validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
-	  )->pack(-side => 'left');
+		    -variable => \$curmatch{$m}->{"HomeScore"},	
+		    -width => 3,
+		    -listwidth => 20,
+		    -choices => \@scores,
+		    -browsecmd => [ \&computepoints, $m,"Home" ],
+		    # Only allow numbers or the letter F to be entered
+		    -validate => 'key',
+		    -validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
+		   )->pack(-side => 'left');
     $f->Checkbutton( -variable => \$curmatch{$m}->{"HomeCoed"},
 		     -command => [ \&computepoints, $m,"Home" ],
 		   )->pack(-side => 'left');
@@ -1475,24 +1572,24 @@ sub init_scores {
     $f->Label(-text => "vs", -width => 8)->pack(-side => 'left');
     
     $f->Label(-textvariable => \$curmatch{$m}->{"AwayName"}, 
-			  -anchor => 'w', -width => 20)->pack(-side => 'left');
-	$f->BrowseEntry(-label => 'Score',
-					-variable => \$curmatch{$m}->{"AwayScore"},	
-					-width => 3,
-					-listwidth => 20,
-					-choices => \@scores,
-					-browsecmd => [ \&computepoints, $m,"Home" ],
-					# Only allow numbers or the letter F to be entered
-					-validate => 'key',
-					-validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
-	  )->pack(-side => 'left');
+	      -anchor => 'w', -width => 20)->pack(-side => 'left');
+    $f->BrowseEntry(-label => 'Score',
+		    -variable => \$curmatch{$m}->{"AwayScore"},	
+		    -width => 3,
+		    -listwidth => 20,
+		    -choices => \@scores,
+		    -browsecmd => [ \&computepoints, $m,"Home" ],
+		    # Only allow numbers or the letter F to be entered
+		    -validate => 'key',
+		    -validatecommand => sub { $_[0] =~ m/^(?:|F|\d+)$/; },
+		   )->pack(-side => 'left');
     $f->Checkbutton( -variable => \$curmatch{$m}->{"AwayCoed"},
-					 -command => [ \&computepoints, $m,"Home" ],
-	  )->pack(-side => 'left');
+		     -command => [ \&computepoints, $m,"Home" ],
+		   )->pack(-side => 'left');
     
     $w = $f->Label(-textvariable => \$curmatch{$m}->{"AwayPoints"},
-				   -background => $notokcolor,-width => 6,
-	  )->pack(-side => 'left');
+		   -background => $notokcolor,-width => 6,
+		  )->pack(-side => 'left');
     $f->pack(-side => 'top',-fill => 'x');
     push @{$curmatch{$m}->{PointsLabels}}, $w;
   }
@@ -1532,9 +1629,9 @@ sub load_game_file {
 	# Needs better error checking here!
 
     # Reload Teams
-    foreach (keys %$teamref) {
-      $teams{$_} = $$teamref{$_};
-      print "  $_ = $$teamref{$_}\n";
+    foreach my $i (@$teamref) {
+      $teams[$i] = $$teamref{$i};
+      print "  $i = $$teamref{$i}\n";
     }
 
     # Reload Matches
@@ -1565,7 +1662,7 @@ sub save_game_file {
   my $seasonref = shift;
 
   print "DumpFile($gf, .... )\n";
-  DumpFile($gf,$teamref,$matchref,$standingsref);
+  DumpFile($gf,$teamref,$matchref,$standingsref,$seasonref);
 }
 
 #---------------------------------------------------------------------
@@ -1575,24 +1672,28 @@ sub save_game_file_as {
   my $teamref = shift;
   my $matchref = shift;
   my $standingsref = shift;
+  my $seasonref = shift;
 
   my $fs = $top->FileSelect(-directory => '.',
-							-filter => "*.tks",
-							-initialfile => $game_file,
-	);
+			    -filter => "*.tks",
+			    -initialfile => $game_file,
+			   );
   $fs->geometry("600x400");
   my $savefile = $fs->Show;
   
   if ($savefile eq "") {
-	print "Not saving the file...\n";
-	return $gf;
+
+    print "Not saving the file...\n";
+    return $gf;
   }
   else {
-	print "DumpFile(\"$savefile\", .... )\n";
-	DumpFile($savefile,$teamref,$matchref,$standingsref);
-	return $savefile;
+    save_game_file($top,$savefile,$teamref,$matchref,$standingsref,$seasonref);
+
+    # Update our base report file name
+    $rpt_file = $savefile;
+    $rpt_file =~ s/\.tks$//;
+    return $savefile;
   }
-  
 }
 
 #---------------------------------------------------------------------
@@ -1738,7 +1839,7 @@ sub mkbuttons {
 									-fill => 'both',
 									-expand => 'yes');
   
-  $buttons->Button(-text => 'Quit',-command => sub{ &cleanup_and_quit($top,$game_file)},
+  $buttons->Button(-text => 'Quit',-command => sub{ &cleanup_and_exit($top,$game_file)},
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
@@ -1748,13 +1849,13 @@ sub mkbuttons {
   
   $buttons->Button(-text => 'Save',-command => sub { 
 	&save_curmatch($curweek);
-	&save_game_file($top,$game_file,\%teams,\@matches,\%standings,\%season);
+	&save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 				   },
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save As',-command => sub { 
 	&save_curmatch($curweek);
-	$game_file = &save_game_file_as($top,$game_file,\%teams,\@matches,\%standings,\%season);
+	$game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 				   },
 	)->pack(-side => 'left', -expand =>'yes');
   
@@ -1767,6 +1868,121 @@ sub mkbuttons {
 	)->pack(-side => 'left', -expand =>'yes');
   
   $buttons->pack(-side => 'bottom');
+
+}
+
+#---------------------------------------------------------------------
+sub roster_email_pdf {
+  my $team = shift;
+
+}
+
+#---------------------------------------------------------------------
+# Creates a PDF file which can be emailed to manager(s) for each team
+# to be given to refs at start of game.  Needs a better function name
+# though. 
+
+sub roster_mk_pdf {
+
+  my $save_dir = shift @_;
+  my $team = shift @_;
+  my $home = shift @_;
+  my $away = shift @_;
+  my $week = shift @_;
+
+  my $pdf = new PDF::API2;
+  $pdf->mediabox('Letter');
+  my $page = $pdf->page;
+  my $font = $pdf->corefont("Helvetica-Bold");
+
+  $pdf->info(
+	     'Author'       => "John Stoffel, DSL Secretary",
+	     #'CreationDate' => "D:20130404180000",
+	     #'ModDate'      => "D:YYYYMMDDhhmmssOHH'mm'",
+	     'Creator'      => "tk-score6.pl",
+	     'Producer'     => "PDF::API2",
+	     'Title'        => "Team Roster: $team",
+	     'Subject'      => "",
+	     'Keywords'     => "DSL Soccer Roster"
+	    );
+  
+  my $header = $page->text();
+  $header->font($font, 20);
+  $header->translate(20,750);
+  $header->text("Digital Soccer League - 2013 Outdoor Season");
+
+  $header->translate(20,715);
+  $header->text("Game Roster: $team");
+  
+  my $header_props = { font => $pdf->corefont("Helvetica-Bold"),
+		       font_size => 14,
+		     };					 
+  
+  # some data to layout
+  my $game =[
+	     [ "Week", "Home:", "Away:", "Date", "Time",  "Field 1" ],
+	     [ "$week", "$home",  "$away", "4/31/2013", "6pm", "Field 1" ],
+	    ];
+  
+  my $roster = [
+		[ "Num", "Last, First", "Mass Soccer ID", "Playing?" ],
+		[ "16", "Stoffel, John",  "12345678", "  Yes        No  "],
+		[ "12", "Leidel, Ryan",   "32345566", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
+		[ "  ", "              ", "        ", "  Yes        No  "],
+		[ "  ", "              ", "        ", "  Yes        No  "],
+		[ "  ", "              ", "        ", "  Yes        No  "],
+		[ "  ", "              ", "        ", "  Yes        No  "],
+	       ];
+  
+  # build the table layout
+  my $gtable = PDF::Table->new;
+  
+  $gtable->table(
+		 # required params
+		 $pdf, $page, $game,
+		 -x  => 20,
+		 -start_y => 680,
+		 -next_y => 700,
+		 -start_h => 300,
+		 -next_h => 500,
+		 # some optional params
+		 -w => 570,
+		 -padding => 5,
+		 -padding_right => 10,
+		 -background_color_odd => "lightgray",
+		 -background_color_even => "white",
+		 -header_props => $header_props,
+		);
+  
+  my $rtable = PDF::Table->new;
+  $rtable->table(
+		 # required params
+		 $pdf, $page, $roster,
+		 -x  => 20,
+		 -start_y => 600,
+		 -next_y => 700,
+		 -start_h => 300,
+		 -next_h => 500,
+		 # some optional params
+		 -w => 570,
+		 -padding => 5,
+		 -padding_right => 10,
+		 -background_color_odd => "lightgray",
+		 -background_color_even => "white",
+		 -header_props => $header_props,
+		);
+
+  my $file = "$save_dir/$team-roster.pdf";
+  $file =~ s/(\s+)/_/g;
+  $pdf->saveas($file);
+  print "Wrote $team Roster to $file\n\n";
+  $pdf->end;
 }
 
 #---------------------------------------------------------------------
@@ -1785,6 +2001,15 @@ sub parseopts {
   pod2usage(-exitstatus => 0, -verbose => 2) if $man;
 }
 
+# Set the report filename based on our game_file name.
+$rpt_file = $game_file;
+$rpt_file =~ s/\.tks$//;
+
+
+
+
+#---------------------------------------------------------------------
+# MAIN SETUP, turn into a function someday!
 #---------------------------------------------------------------------
 my $top = MainWindow->new;
 $top->configure(-title => 'Soccer Scoring',
@@ -1798,93 +2023,112 @@ $top->optionAdd('*font', 'Helvetica 9');
 # Menu Bar of commands
 my $mbar=$top->Menu();
 $top->configure(-menu => $mbar);
-my $season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
-my $match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
-my $penalty=$mbar->cascade(-label=>"~Penalty", -tearoff => 0);
-my $playoffs=$mbar->cascade(-label=>"Playoffs", -tearoff => 0);
-my $rosters=$mbar->cascade(-label=>"Rosters", -tearoff => 0);
-my $help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
+my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
+my $m_match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
+my $m_penalty=$mbar->cascade(-label=>"~Penalty", -tearoff => 0);
+my $m_playoffs=$mbar->cascade(-label=>"Playoffs", -tearoff => 0);
+my $m_rosters=$mbar->cascade(-label=>"Rosters", -tearoff => 0);
+my $m_teams=$mbar->cascade(-label=>"Teams", -tearoff => 0);
+my $m_schedule=$mbar->cascade(-label=>"Schedule", -tearoff => 0);
+my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 
 #---------------------------------------------------------------------
 # Season Menu
-$season->command(-label =>'~New     ', -command=> sub { 
-  &init_game_file($top); },
-  );
-$season->command(-label =>'~Open    ', -command=> sub {
-  &load_game_file($top,$game_file);
+$m_season->command(-label =>'~New     ', -command=> sub { 
+		     &init_game_file($top); },
+		  );
+$m_season->command(-label =>'~Open    ', -command=> sub {
+		     &load_game_file($top,$game_file);
+		   },
+		  );
+$m_season->command(-label =>'~Save    ', -command=> sub { 
+		     &save_curmatch($curweek);
+		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
+		   },
+		  );
+$m_season->command(-label =>'~Save As ', -command=> sub { 
+		     &save_curmatch($curweek);
+		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 			   },
   );
-$season->command(-label =>'~Save    ', -command=> sub { 
-  &save_curmatch($curweek);
-  &save_game_file($top,$game_file,\%teams,\@matches,\%standings,\%season);
-			   },
-  );
-$season->command(-label =>'~Save As ', -command=> sub { 
-  &save_curmatch($curweek);
-  $game_file = &save_game_file_as($top,$game_file,\%teams,\@matches,\%standings,\%season);
-			   },
-  );
-$season->separator();
-$season->command(-label =>'~Update Standings', -command => sub {
-  &update_standings($curweek) },
-  );
-$season->separator();
-$season->command(-label =>'~Report  ', -command => sub {
-  &make_report($rpt_file) },
-  );
-$season->separator();
-$season->command(-label =>'~Quit    ', -command=>sub{ &cleanup_and_quit($top,$game_file)},
+$m_season->separator();
+$m_season->command(-label =>'~Update Standings', -command => sub {
+		     &update_standings($curweek) },
+		  );
+$m_season->separator();
+$m_season->command(-label =>'~Report  ', -command => sub {
+		     &make_report($rpt_file) },
+		  );
+$m_season->separator();
+$m_season->command(-label =>'~Quit    ', -command=>sub{ &cleanup_and_exit($top,$game_file)},
   );
 
 #---------------------------------------------------------------------
 # Match Menu
-$match->command(-label => 'Reschedule', -command => sub {
-  &match_reschedule($top,$curweek);},
-  );
+$m_match->command(-label => 'Reschedule', -command => sub {
+		    &match_reschedule($top,$curweek);},
+		 );
 
 #---------------------------------------------------------------------
 # Penalty Menu
-$penalty->command(-label => 'Add', -command => sub {
+$m_penalty->command(-label => 'Add', -command => sub {
   &penalty_add($top,$curweek);},
   );
-$penalty->command(-label => 'Edit', -command => sub {
+$m_penalty->command(-label => 'Edit', -command => sub {
   &penalty_edit($top,$curweek);},
   );
-$penalty->command(-label => 'Remove', -command => sub {
+$m_penalty->command(-label => 'Remove', -command => sub {
   &penalty_del($top,$curweek);},
   );
 
 #---------------------------------------------------------------------
 # Playoffs Menu
-$penalty->command(-label => 'Setup', -command => sub {
+$m_playoffs->command(-label => 'Setup', -command => sub {
   &playoffs_setup($top,$curweek);},
   );
-$penalty->command(-label => 'Score', -command => sub {
+$m_playoffs->command(-label => 'Score', -command => sub {
   &playoffs_score($top,$curweek);},
   );
-$penalty->command(-label => 'Report', -command => sub {
+$m_playoffs->command(-label => 'Report', -command => sub {
   &playoffs_reports($top,$curweek);},
   );
 
 
 #---------------------------------------------------------------------
 # Rosters Menu
-$rosters->command(-label => 'Edit', -command => sub {
+$m_rosters->command(-label => 'New', -command => sub {
   &rosters_edit($top,$curweek);},
   );
-$rosters->command(-label => 'Generate Game Roster', -command => sub {
+$m_rosters->command(-label => 'Edit', -command => sub {
+  &rosters_edit($top,$curweek);},
+  );
+$m_rosters->command(-label => 'View', -command => sub {
+  &rosters_show($top,$curweek);},
+  );
+$m_rosters->command(-label => 'Export to PDF', -command => sub {
   &rosters_mk_pdf($top,$curweek);},
   );
-$rosters->command(-label => 'Show', -command => sub {
-  &rosters_show($top,$curweek);},
+$m_rosters->command(-label => 'Export to CSV', -command => sub {
+  &rosters_mk_csv($top,$curweek);},
+  );
+$m_rosters->command(-label => 'Mail to Managers', -command => sub {
+  &rosters_mailto_managers($top,$curweek);},
   );
 
 
 #---------------------------------------------------------------------
+# Teams Menu
+$m_teams->command(-label => 'View', -command => [ \&teams_view, $top, @teams ],);
+
+#---------------------------------------------------------------------
+# Schedule Menu
+$m_schedule->command(-label => 'View', -command => [ \&schedule_view, $top, @matches ],);
+
+#---------------------------------------------------------------------
 # Help Menu
-$help->command(-label => 'Version');
-$help->separator;
-$help->command(-label => 'About');
+$m_help->command(-label => 'Version');
+$m_help->separator;
+$m_help->command(-label => 'About');
 
 # Scores are up top, Week display and standings below, side by side.
 
@@ -1906,7 +2150,7 @@ $standingsframe->pack(-side => 'right', -fill => 'y');
 $bottomframe->pack(-side => 'top', -fill => 'x');
 
 
-MainLoop;
+&MainLoop;
 
 
 
@@ -1919,8 +2163,13 @@ MainLoop;
 #
 # - finally started using a changelog
 # - improved report generation to using game date
-
-
+#
+# 2013/04/04 - v1.6
+# - started support for outdoor season
+#   - 9 team schedule, with lining and bye columns
+#   - updated 8 team schedule with empty bye and lining columns
+#   - initial support for PDF format rosters using PDF::API2 and PDF::Table
+#   - updated display for proper column support and report generation.
 
 
 #---------------------------------------------------------------------
