@@ -25,8 +25,8 @@ my $count = 0;
 foreach my $mod ("Tk",	
 		"Tk::BrowseEntry", "Tk::DateEntry", "Tk::HList",
 		"Tk::ItemStyle", "Tk::DialogBox", "Tk::Month",
-		"Tk::FileSelect", 
-		"Date::Calc qw(Decode_Date_US Delta_Days Date_to_Days Add_Delta_Days)",
+		 "Tk::FileSelect", "Tk::FileDialog",
+		 "Date::Calc qw(Decode_Date_US Delta_Days Date_to_Days Add_Delta_Days)",
 	) {
   eval "use $mod;1";
   if ($@) {
@@ -1084,7 +1084,7 @@ sub generate_schedule {
 	  $home = "tbd";
 	  $away = "tbd";
 	}
-	elsif ($match = "Playoffs") {
+	elsif ($match eq "Playoffs") {
 	  $game->{Type} = "P";
 	  $home = "tbd";
 	  $away = "tbd";
@@ -2179,9 +2179,10 @@ sub select_game_file {
   my $top = shift;
   my $file = shift;
 
-  my $fs = $top->FileSelect(-directory => ".",
-			    -filter => "*.tks",
-			    -initialfile => $file,
+  my $fs = $top->FileDialog(-Title => "Open a Game File",
+			    -directory => $ENV{'HOME'},
+			    -FPat => "*.tks",
+			    -ShowAll => "NO",
 			   );
   
   $fs->geometry("600x400");
@@ -2213,6 +2214,7 @@ sub save_game_file_as {
   $gf = "new-season.tks"  if ($gf eq "");
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
+			    -verify => ['!-d'],
 			    -initialfile => $game_file,
 	);
   $fs->geometry("600x400");
@@ -2574,7 +2576,7 @@ $top->configure(-title => "No game file loaded",
 $top->geometry('-300-300');
 
 # Default font.  
-$top->optionAdd('*font', 'Helvetica 9');
+$top->optionAdd('*font', 'Helvetica 10');
 
 # Use this to set default colors.  
 $top->optionAdd('*TkScore*background', '#F0F0F0');
