@@ -25,7 +25,7 @@ my $count = 0;
 foreach my $mod ("Tk",	
 		"Tk::BrowseEntry", "Tk::DateEntry", "Tk::HList",
 		"Tk::ItemStyle", "Tk::DialogBox", "Tk::Month",
-		 "Tk::FileSelect", "Tk::FileDialog",
+		 "Tk::FileSelect",
 		 "Date::Calc qw(Decode_Date_US Delta_Days Date_to_Days Add_Delta_Days)",
 	) {
   eval "use $mod;1";
@@ -2179,10 +2179,9 @@ sub select_game_file {
   my $top = shift;
   my $file = shift;
 
-  my $fs = $top->FileDialog(-Title => "Open a Game File",
+  my $fs = $top->FileSelect(
+			    -filter => '*.tks',
 			    -directory => $ENV{'HOME'},
-			    -FPat => "*.tks",
-			    -ShowAll => "NO",
 			   );
   
   $fs->geometry("600x400");
@@ -2215,7 +2214,7 @@ sub save_game_file_as {
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
 			    -verify => ['!-d'],
-			    -initialfile => $game_file,
+			    -initialfile => $gf,
 	);
   $fs->geometry("600x400");
   my $savefile = $fs->Show;
@@ -2357,10 +2356,9 @@ sub computepoints {
   my $idx = shift;
   my $us = shift;
 
-  print "computepoints($idx,$us)\n";
+  #print "computepoints($idx,$us)\n";
   my ($ourscore,$ourcoed,$ourpts,$them,$theirscore,$theircoed);
 
-  #print "scoring the match...\n";
   my $hs = $curmatch{$idx}->{"HomeScore"};
   my $hc = $curmatch{$idx}->{"HomeCoed"};
   my $as = $curmatch{$idx}->{"AwayScore"};
