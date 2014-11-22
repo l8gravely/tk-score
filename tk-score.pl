@@ -4,7 +4,7 @@
 # soccer league that plays once a week on tuesdays.  This is reflected
 # in the lack of scheduling options as currently avaible.
 
-# ChangeLog at end, please update!
+# Now using GIT!
 
 use strict;
 
@@ -54,7 +54,9 @@ warn "\nPlease install the above modules to generate PDF reports.\n" if $count;
 # Defaults and global variables.  
 #---------------------------------------------------------------------
 
-my $VERSION = "v1.8 (2013-11-06)";
+my $VERSION = "v1.9 (2014-11-17)";
+
+# Version of the Game file.  
 my $gf_version = "v2.0";
 
 my $mail_from = "dsl\@stoffel.org";
@@ -123,23 +125,21 @@ my $first_match_scrimmage = 0;
 
 my %sched_template = 
   ( 6 => {
-	  0  => [ "", "", "", "", "", "" ],
-	  1  => [ "2-1", "3-6", "4-5", "", "", "" ],
-	  2  => [ "3-4", "6-1", "2-5", "", "", "" ],
-	  3  => [ "6-4", "2-3", "1-5", "", "", "" ],
-	  4  => [ "4-1", "5-3", "6-2", "", "", "" ],
-	  5  => [ "5-6", "1-3", "4-2", "", "", "" ],
-
-	  6  => [ "5-4", "6-3", "1-2", "", "", "" ],
-	  7  => [ "1-6", "4-3", "5-2", "", "", "" ],
-	  8  => [ "4-6", "5-1", "3-2", "", "", "" ],
-	  9  => [ "2-6", "3-5", "1-4", "", "", "" ],
-	  10  => [ "3-1", "2-4", "6-5", "", "", "" ],
-
+	  0  => [ "3-2", "4-6", "1-5", "", "", "3" ],
+	  1  => [ "2-1", "3-6", "4-5", "", "", "1" ],
+	  2  => [ "3-4", "2-5", "6-1", "", "", "5" ],
+	  3  => [ "6-4", "1-5", "2-3", "", "", "6" ],
+	  4  => [ "4-1", "6-2", "5-3", "", "", "2" ],
+	  5  => [ "5-6", "1-3", "4-2", "", "", "4" ],
+	  6  => [ "5-4", "1-2", "6-3", "", "", "2" ],
+	  7  => [ "5-2", "4-3", "1-6", "", "", "4" ],
+	  8  => [ "5-1", "6-4", "3-2", "", "", "6" ],
+	  9  => [ "2-6", "3-5", "1-4", "", "", "3" ],
+	  10  => [ "3-1", "2-4", "6-5", "", "", "1" ],
 	  11 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	  12 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
-  ( 8 => {
+    8 => {
 	  0  => [ "1-7", "2-3", "5-8", "4-6", "", "1" ],
 	  1  => [ "1-2", "3-4", "5-6", "7-8", "", "1" ],
 	  2  => [ "5-7", "6-8", "1-3", "2-4", "", "5" ],
@@ -199,6 +199,7 @@ my $match_template = { Week => 0,
                        AwayCoed => 0,
                        AwayPoints => 0,
                        Complete => 0,
+		       Type => '',
                     };
 
 my $playoff_sched = 
@@ -214,12 +215,16 @@ my $playoff_sched =
 		    };
 
 # Number of teams supported by schedules.
-my @teamcnt = sort(qw(8 9));
+my @teamcnt = sort(qw(6 7 8 9));
 my $max_numteams = $teamcnt[$#teamcnt];
 my $numteams = $teamcnt[0];
 
-my @playoff_rnds = qw(3 2);
-my @game_times = ("6pm & 7pm", "7pm & 8pm");
+my @playoff_rnds = qw(3 2 1 0);
+my @games_per_week = qw(3 4);
+my $matches_per_week = 4;
+
+my @game_times = ("6pm, 6pm, 7pm & 7pm", "7pm, 7pm, 8pm & 8pm", "6pm, 6pm & 7pm");
+
 #my $num_playoffs = $playoff_rnds[0];
 
 # Two rounds of games for each team playing every other team.
@@ -229,7 +234,6 @@ my $curweek = 0;
 my $curdate = "";
 my $weekdate= "";
 my @weeks;
-my $matches_per_week = 4;
 
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
@@ -306,6 +310,7 @@ sub init_matches_per_week {
 	$t{$m}->{AwayCoed} = 0;
 	$t{$m}->{AwayPoints} = "";
 	$t{$m}->{PointsLabels} = ();
+	$t{$m}->{Type} = "G";
   }
   return %t;
 }
@@ -953,7 +958,7 @@ sub generate_schedule {
   my @team_names = @$tmp_ref;
 
   $tmp_ref = shift @_;
-  my $season = $$tmp_ref;
+  my $season_name = $$tmp_ref;
 
   $tmp_ref = shift @_;
   my $start_date = $$tmp_ref;
@@ -988,7 +993,9 @@ sub generate_schedule {
   print "Scrimmage = $do_scrimmage\n";
   print "Schedule Makeup Week = $sched_makeup\n";
   print "Playoff rounds = $num_playoffs\n";
-  if (&validate($num_teams,$start_date,$season,\@team_names)) {
+  print "Season Name = $season_name\n";
+
+  if (&validate($num_teams,$start_date,$season_name,\@team_names)) {
     
     my $n=1;
     foreach my $e (@team_names) {
@@ -1018,7 +1025,7 @@ sub generate_schedule {
     }
     # Store Season Setup options
     $season{Lining} = $do_lining;
-    $season{Description} = "Description";
+    $season{Description} = $season_name;
     $season{Scrimmage} = $do_scrimmage;
     $season{Playoff_Rounds} = $num_playoffs;
     $season{Number_Teams} = $num_teams;
@@ -1053,7 +1060,7 @@ sub generate_schedule {
 
       # Since we have SIX columns, pop off the last two, which are for
       # byes[5] and lining[6].  This is ugly and I should just change
-      # the data structure.  TODO
+      # the data structure.  FIXME!
       
       $lining_team{$week} = "";
       if ($do_lining) {
@@ -1158,13 +1165,15 @@ sub generate_schedule {
 
 #---------------------------------------------------------------------
 # This is where you hit the Done button once the generate_schedule()
-# is finished it's work.
+# has finished it's work.
 
 sub accept_schedule {
 
   my $top = shift;
   my $win = shift;
   my $desc = shift;
+
+  print "accept_schedule($desc)\n";
   $top->configure(title => $desc);
   $win->destroy;
   &update_datelist($match_datelist);
@@ -1279,7 +1288,7 @@ sub roster_mk_pdf {
   my $header = $page->text();
   $header->font($font, 20);
   $header->translate(20,750);
-  $header->text("Digital Soccer League - 2013 Outdoor Season");
+  $header->text("Digital Soccer League");
   
   $header->translate(20,715);
   $header->text("Game Roster: $team");
@@ -1380,6 +1389,7 @@ sub init_game {
   print "init_game()\n";
 
   my $game_time = $game_times[0];
+  my $game_per_week = 4;
   my $playoff_cnt = $playoff_rnds[0];
   my $first_match_scrimmage = 0;
   my $teams_line_fields = 0;
@@ -1428,9 +1438,15 @@ sub init_game {
 			 -choices => \@playoff_rnds,
 			)->pack(-side => 'top');
   
+  $setup_fr->BrowseEntry(-label => 'Games per Week',
+			 -variable => \$game_per_week,
+			 -width => 3,
+			 -choices => \@games_per_week,
+			)->pack(-side => 'top');
+  
   $setup_fr->BrowseEntry(-label => 'Game Times',
 			 -variable => \$game_time,
-			 -width => 12,
+			 -width => 20,
 			 -choices => \@game_times,
 			)->pack(-side => 'top');
   
@@ -1538,7 +1554,7 @@ sub init_game {
   
   my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
   my $done_but = $but_fr->Button(-text => "Done", -state => 'disabled',
-				 -command => [ \&accept_schedule, $top, $win, \$descrip ]
+				 -command => [ \&accept_schedule, $top, $win, $descrip ]
 				);
   
   my $gen_but = $but_fr->Button(-text => "Generate Schedule", 
@@ -1947,6 +1963,7 @@ sub clear_match_display {
     $curmatch{$i}->{"Time"} = "";
     $curmatch{$i}->{"Field"} = "";
     $curmatch{$i}->{"Complete"} = 0;
+    $curmatch{$i}->{"Type"} = "";
     &chgcolor($notokcolor,$i);
   }
 }
@@ -2280,6 +2297,8 @@ sub save_game_file {
 }
 
 #---------------------------------------------------------------------
+# FIXME - better error handling needed here!
+
 sub write_game_file {
   my $gf = shift;
   my $teamref = shift;
@@ -2299,7 +2318,9 @@ sub write_game_file {
 	       Version => $gf_version,
 	     };
   
-
+  if (! -e $gf) {
+    # FIXME - again error handling...
+  }
   DumpFile($gf,$data);
   $NeedSave = 0;
 }
