@@ -1301,19 +1301,8 @@ sub roster_mk_pdf {
 	    ];
   
   my $roster = [
-		[ "Num", "Last, First", "Mass Soccer ID", "Playing?" ],
-		[ "16", "Stoffel, John",  "12345678", "  Yes        No  "],
-		[ "12", "Leidel, Ryan",   "32345566", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "16", "Kiernan, Jason", "34567834", "  Yes        No  "],
-		[ "  ", "              ", "        ", "  Yes        No  "],
-		[ "  ", "              ", "        ", "  Yes        No  "],
-		[ "  ", "              ", "        ", "  Yes        No  "],
-		[ "  ", "              ", "        ", "  Yes        No  "],
+		[ "Jersey", "Last, First", "Soccer ID", "Playing?" ],
+		[ "16", "Doe, John",  "12345678", "Y/N"],
 	       ];
   
   # build the table layout
