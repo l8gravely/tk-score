@@ -214,16 +214,17 @@ my $playoff_sched =
     },
 		    };
 
-# Number of teams supported by schedules.
-my @teamcnt = sort(qw(6 7 8 9));
+# Number of teams supported by schedules.  This should really be
+# broken out into their own module.  Also, the 6 team schedule assumes
+# three fields per/week, 8 and 9 team schedules assume 4 fields
+# per/week.  Need to update logic somehow to present this properly. 
+my @teamcnt = sort(qw(6 8 9));
 my $max_numteams = $teamcnt[$#teamcnt];
 my $numteams = $teamcnt[0];
 
 my @playoff_rnds = qw(3 2 1 0);
-my @games_per_week = qw(3 4);
+my @games_per_week = qw(1 2 3 4 5 6);
 my $matches_per_week = 4;
-
-my @game_times = ("6pm, 6pm, 7pm & 7pm", "7pm, 7pm, 8pm & 8pm", "6pm, 6pm & 7pm");
 
 #my $num_playoffs = $playoff_rnds[0];
 
@@ -425,7 +426,7 @@ sub penalty_init {
                           -columns=>3, -header => 1, 
 			  -selectmode => 'single', -width => 40,
 			 )->pack(-fill => 'x'); 
-  $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
+  $hl->configure(-browsecmd => [ \&datelist_browse, $hl ]);
   $hl->header('create', 0, -itemtype => 'text', -text => "Date");
   $hl->columnWidth(0, -char => 16);
   $hl->header('create', 1, -itemtype => 'text', -text => "Team");
@@ -441,6 +442,12 @@ sub penalty_init {
 }
 
 #---------------------------------------------------------------------
+sub penalty_browse {
+
+
+}
+
+#---------------------------------------------------------------------
 sub penalty_add {
   my $top = shift;
   my $curweek = shift;
@@ -453,23 +460,23 @@ sub penalty_add {
 			   -width => 30, labelPack => [ -side => 'left'])->pack(-side => 'left');
   
   my $add_but = $f->Button(-text => 'Add', -command => sub { 
-	if ($reason ne '') {
-	  $plb->insert('end',$date,$reason);
-	  $reason = '';
-	  $date = '';
-	}
-						   }
-	);
+			     if ($reason ne '') {
+			       $plb->insert('end',$date,$reason);
+			       $reason = '';
+			       $date = '';
+			     }
+			   }
+			  );
   
   my $del_but = $f->Button(-text => 'Delete', -command => sub { 
-	if ($reason ne '') {
-	  $plb->delete('end',$date,$reason);
-	  $reason = '';
-	  $date = '';
-	}
-			 }
-	);
-
+			     if ($reason ne '') {
+			       $plb->delete('end',$date,$reason);
+			       $reason = '';
+			       $date = '';
+			     }
+			   }
+			  );
+  
 }
 
 #---------------------------------------------------------------------
@@ -964,7 +971,7 @@ sub generate_schedule {
   my $start_date = $$tmp_ref;
 
   $tmp_ref = shift @_;
-  my $game_time = $$tmp_ref;
+  my time_field_lb = $$tmp_ref;
 
   $tmp_ref = shift @_;
   my $num_playoffs = $$tmp_ref;
@@ -990,6 +997,7 @@ sub generate_schedule {
   print "generate_schedule()\n";
   print "Num Teams:  $num_teams\n";
   print "Start Date: $start_date\n";
+  print "Times_Fields: $#times_fields\n";
   print "Scrimmage = $do_scrimmage\n";
   print "Schedule Makeup Week = $sched_makeup\n";
   print "Playoff rounds = $num_playoffs\n";
@@ -1084,9 +1092,6 @@ sub generate_schedule {
 	$bye_team{$week} = $teams[$has_bye];
       }
       
-      # What is our game start times?
-      my($first_game_time,$second_game_time) = split(' & ', $game_time);
-      
       # Now fill in the schedule for games this week.
       my $i = 0;
       my $game;
@@ -1129,20 +1134,12 @@ sub generate_schedule {
 	$game->{Complete} = 0;
 	$game->{MatchID} = $matchid++;
 	
-	# Template assumes two games at 6 or 7pm, then two at 7 or
-	# 8pm, using Field 1 then 2, in that order, for a total of
-	# four games. 
+	# Template now pulls start time and location from an array
+	# matching the number of matches per_day.  Now explicitly
+	# picked by end user.
 	
-	if ($i == 0 || $i == 2) {
-	  $game->{Field} = "Field 1";
-	} else {
-	  $game->{Field} = "Field 2";
-	}
-	if ($i == 0 || $i == 1) {
-	  $game->{Time} = $first_game_time;
-	} else {
-	  $game->{Time} = $second_game_time;
-	}
+	$game->{Field} = $times_fields[$i]->{Field};
+	$game->{Time} = $times_fields[$i]->{Time};
 	$i++; 
 	push @matches, $game;
       }
@@ -1221,7 +1218,7 @@ sub teams_rename {
   my $top = shift;
   my $ref = shift;
   my @ts = @$ref;
-  my $widget;
+
   print "teams_rename()\n";
 
   my $win = MainWindow->new();
@@ -1382,13 +1379,13 @@ sub edit_season {
 #---------------------------------------------------------------------
 # Piss poor function name, FIXME.  
 
-sub init_game {
+sub init_new_game {
   my $top = shift;
 
-  my $widget;
-  print "init_game()\n";
+  my $tmf;  # Temp Frame
 
-  my $game_time = $game_times[0];
+  print "init_new_game()\n";
+
   my $game_per_week = 4;
   my $playoff_cnt = $playoff_rnds[0];
   my $first_match_scrimmage = 0;
@@ -1444,12 +1441,6 @@ sub init_game {
 			 -choices => \@games_per_week,
 			)->pack(-side => 'top');
   
-  $setup_fr->BrowseEntry(-label => 'Game Times',
-			 -variable => \$game_time,
-			 -width => 20,
-			 -choices => \@game_times,
-			)->pack(-side => 'top');
-  
   $setup_fr->Checkbutton(-variable => \$first_match_scrimmage,
 			 -text => "First Match for Scrimmage? ",
 			)->pack(-side => 'top', -fill => 'x');
@@ -1466,36 +1457,90 @@ sub init_game {
   $t->Label(-text => 'Start Date:')->pack(-side => 'left');
   $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');
   $t->pack(-side => 'top', -fill => 'x');
+
+  my %time_fields;
+  my @times_fields;
+  my $time;
+  my $field;
+
+  #---------------------
+  $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
+
+  $tmf->Label(-text => 'Time:')->pack(-side => 'left');
+  $tmf->Entry(-textvariable => \$time)->pack(-side => 'left');
   
+  $tmf->Label(-text => 'Field:')->pack(-side => 'left');
+  $tmf->Entry(-textvariable => \$field)->pack(-side => 'left');
+  
+  # Create the listbox first, even though the add button gets packed
+  # above it within the temp_middle_frame (tmf).  
+  
+  my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
+					 -height => 3, -selectmode => "single",
+					 -width => 30)->pack(-fill => 'x');
+  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => "lightgrey", -anchor=>'w'); 
+  $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
+  $time_field_lb->columnWidth(0,-char => 15);
+  $time_field_lb->header('create', 1, -itemtype => 'text', -text => 'Field');
+  $time_field_lb->columnWidth(1,-char => 15);
+
+  my $dfadd_b = $tmf->Button(-text => 'Add',-command => sub {
+			       if ($time ne '' && $field ne '') {
+				 # Creates new child at end
+				 my $e = $time_field_lb->addchild("");
+				 $time_field_lb->itemCreate($e,0,-itemtype => 'text', -text => $time, -style => $dls_blue);
+				 $time_field_lb->itemCreate($e,1,-itemtype => 'text', -text => $field, -style => $dls_blue);
+				 $time = '';
+				 $field = '';
+
+			    } }
+			 );
+  $dfadd_b->pack(-side => 'left', -fill => 'x');
+  
+  my $dfdel_b = $tmf->Button(-text => 'Delete Time/Field',-command => sub
+			     { $time_field_lb->delete('entry',$time_field_lb->info('selection')) 
+				 if $time_field_lb->info('selection');
+			       $time = ''; 
+			       $field = '';
+			     }
+			    );
+  $dfdel_b->pack(-side => 'left', -fill => 'x');
+  $tmf->pack(-side => 'top', -fill => 'x');
+  
+
+  #---------------------
+  # Holidays Frame and buttons
   my %hols;
   my $holiday;
-  my $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
+
+  $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $tmf->Label(-text => 'Holiday(s):')->pack(-side => 'left');
   $tmf->DateEntry(-textvariable => \$holiday)->pack(-side => 'left');
   
   # Create the listbox first, even though the add button gets packed
   # above it within the temp_middle_frame (tmf).  
   
-  my $hlb = $setup_fr->Scrolled("Listbox", -scrollbars => "e",
-				-height => 3, -selectmode => "single");
+  my $holiday_lb = $setup_fr->Scrolled("Listbox", -scrollbars => "e",
+				   -height => 3, -selectmode => "single");
   
-  my $mfab = $tmf->Button(-text => 'Add',-command => sub {
-			    if ($holiday ne '') {
-			      $hlb->insert('end',$holiday);
-			      $holiday = '';
-			    } }
-			 );
-  $mfab->pack(-side => 'left', -fill => 'x');
+  my $hfadd_b = $tmf->Button(-text => 'Add',-command => sub {
+			       if ($holiday ne '') {
+				 $holiday_lb->insert('end',$holiday);
+				 $holiday = '';
+			       } }
+			    );
+  $hfadd_b->pack(-side => 'left', -fill => 'x');
   
-  my $mfdb = $setup_fr->Button(-text => 'Delete Holiday',-command => sub
-			       { $hlb->delete($hlb->curselection) if $hlb->curselection;
-				 $holiday = ''; }
-			      );
+  my $hfdel_b = $setup_fr->Button(-text => 'Delete Holiday',-command => sub
+				  { $holiday_lb->delete($holiday_lb->curselection) if $holiday_lb->curselection;
+				    $holiday = ''; }
+			   );
   
   $tmf->pack(-side => 'top', -fill => 'x');
-  $hlb->pack(-side => 'top', -fill => 'x');
-  $mfdb->pack(-side => 'bottom', -fill => 'x');
+  $holiday_lb->pack(-side => 'top', -fill => 'x');
+  $hfdel_b->pack(-side => 'bottom', -fill => 'x');
   
+  #---------------------
   # Middle Frame: Teams
   my @teams_temp;
   my @entries;
@@ -1521,9 +1566,9 @@ sub init_game {
   $sf->Label(-text => 'Proposed Schedule: ', 
 			 -width => 30)->pack(-side => 'top');
   my $sl = $sf->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
-						 -header => 1, -selectmode => 'single', -width
-						 => 80,)->pack(-fill => 'x');
-	
+			 -header => 1, -selectmode => 'single', -width
+			 => 80,)->pack(-fill => 'x');
+  
   $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
   $sl->columnWidth(0, -char => 6);
   $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
@@ -1561,8 +1606,8 @@ sub init_game {
 				-command =>  [
 					      \&generate_schedule, $win, \$numteams,
 					      \@entries, \$descrip, \$start_date,
-					      \$game_time, \$playoff_cnt, \$first_match_scrimmage,
-					      \$teams_line_fields, \$schedule_makeup, \$hlb, 
+					      \$time_field_lb, \$playoff_cnt, \$first_match_scrimmage,
+					      \$teams_line_fields, \$schedule_makeup, \$holiday_lb, 
 					      \$done_but ] 
 			       );
   
@@ -1644,7 +1689,7 @@ sub get_match_dates {
 }
 
 #---------------------------------------------------------------------
-sub hl_browse {
+sub datelist_browse {
   my $hl = shift;
   my ($path) = (@_);
 
@@ -1708,7 +1753,7 @@ sub init_datelist {
 			  -selectmode => 'single', -width => $tw,
 			  
                          )->pack(-fill => 'y'); 
-  $hl->configure(-browsecmd => [ \&hl_browse, $hl ]);
+  $hl->configure(-browsecmd => [ \&datelist_browse, $hl ]);
   $hl->header('create', 0, -itemtype => 'text', -text => "Week");
   $hl->columnWidth(0, -char => $widths[0]);
   $hl->header('create', 1, -itemtype => 'text', -text => "Date");
@@ -2632,7 +2677,7 @@ my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 #---------------------------------------------------------------------
 # Season Menu
 $m_season->command(-label => '~New     ', -command => sub { 
-		     &init_game($top); },
+		     &init_new_game($top); },
 		  );
 $m_season->command(-label => '~Open    ', -command => sub {
 		     &select_game_file($top,$game_file);
