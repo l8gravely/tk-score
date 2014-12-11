@@ -971,7 +971,7 @@ sub generate_schedule {
   my $start_date = $$tmp_ref;
 
   $tmp_ref = shift @_;
-  my time_field_lb = $$tmp_ref;
+  my $time_field_lb = $$tmp_ref;
 
   $tmp_ref = shift @_;
   my $num_playoffs = $$tmp_ref;
@@ -990,6 +990,8 @@ sub generate_schedule {
 
   $tmp_ref = shift @_;
   my $done_but = $$tmp_ref;
+
+  my @times_fields;
   
   # Validate inputs.  Should be in the Setup a New Season window, with
   # the 'Done' button disabled until all the required info is entered.
@@ -997,7 +999,6 @@ sub generate_schedule {
   print "generate_schedule()\n";
   print "Num Teams:  $num_teams\n";
   print "Start Date: $start_date\n";
-  print "Times_Fields: $#times_fields\n";
   print "Scrimmage = $do_scrimmage\n";
   print "Schedule Makeup Week = $sched_makeup\n";
   print "Playoff rounds = $num_playoffs\n";
