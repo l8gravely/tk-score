@@ -62,6 +62,14 @@ my $gf_version = "v2.0";
 my $mail_from = "dsl\@stoffel.org";
 my $mail_prog = "/usr/lib/sendmail";
 
+my $default_background = "white";
+my $default_background_odd = "white";
+my $default_background_even = "lightgrey";
+
+# Global font for all GUI elements
+my $default_font_type = "Helvetica";
+my $default_font_size = "10";
+my $default_font = "$default_font_type $default_font_size";
 
 my $game_file = "";
 my $rpt_file = "new-season.rpt";
@@ -416,10 +424,10 @@ sub penalty_init {
   $win->title("Penalties");
   $win->configure(-height => 400,
                   -width => 800,
-                  -background => 'white',
+                  -background => $default_background,
 	);
   $win->geometry('-500-500');
-  $win->optionAdd('*font', 'Helvetica 9');
+  $win->optionAdd('*font', $default_font);
   
 
   my $hl = $win->Scrolled('HList', -scrollbars => 'ow',
@@ -434,9 +442,6 @@ sub penalty_init {
   $hl->header('create', 2, -itemtype => 'text', -text => "Reason");
   $hl->columnWidth(2, -char => 36);
   
-
-
-
   &load_penalties($hl);
   return $hl;
 }
@@ -523,7 +528,6 @@ sub match_reschedule {
   
   # Update the blockdates before we reschedule.
   foreach my $i (&get_match_dates) { 
-    
     push @blockdates, $i->[1];
   }
 
@@ -993,6 +997,8 @@ sub generate_schedule {
 
   my @times_fields;
   
+  
+
   # Validate inputs.  Should be in the Setup a New Season window, with
   # the 'Done' button disabled until all the required info is entered.
 
@@ -1154,6 +1160,9 @@ sub generate_schedule {
       }
       $sched_week++;
     }
+
+    if (&propsed_schedule) {
+    }
     
     # Need to put in a message box here which enables the 'Done'
     # button if it's all ok.  
@@ -1179,6 +1188,52 @@ sub accept_schedule {
   &update_standings($match_dates[0]);
 }
 
+#---------------------------------------------------------------------
+# Open new window showing proposed schedule
+
+sub proposed_schedule {
+
+  my $num_games_week = shift @_;
+
+  my $win = MainWindow-new();
+  $win->title("Proposed Schedule");
+  $win->configure(-height => 400,
+		  -width => 400,
+		  -background => $default_background,
+		 );
+  $win->optionAdd('*font*' => $default_font);
+
+  # Right Frame: Proposed Schedule
+  my $sf = $sched_fr->Frame(-pady => 10, -border => 1);
+  $sf->Label(-text => 'Proposed Schedule: ', 
+			 -width => 30)->pack(-side => 'top');
+  my $sl = $sf->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
+			 -header => 1, -selectmode => 'single', -width
+			 => 80,)->pack(-fill => 'x');
+  
+  $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
+  $sl->columnWidth(0, -char => 6);
+  $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
+  $sl->columnWidth(1, -char => 10);
+  $sl->header('create', 2, -itemtype => 'text', -text => 'Time');
+  $sl->columnWidth(2, -char => 6);
+  $sl->header('create', 3, -itemtype => 'text', -text => 'Field 1');
+  $sl->columnWidth(3, -char => 8);
+  $sl->header('create', 4, -itemtype => 'text', -text => 'Field 2');
+  $sl->columnWidth(4, -char => 8);
+  $sl->header('create', 5, -itemtype => 'text', -text => 'Field 1');
+  $sl->columnWidth(5, -char => 8);
+  $sl->header('create', 6, -itemtype => 'text', -text => 'Field 2');
+  $sl->columnWidth(6, -char => 8);
+  # Only for outdoor schedules..
+  $sl->header('create', 7, -itemtype => 'text', -text => 'Lining');
+  $sl->columnWidth(7, -char => 6);
+  
+  $sf->pack(-side => 'top', -fill => 'x');
+
+  $top_fr->pack(-side => 'top', -fill => 'x');
+}
+  
 #---------------------------------------------------------------------
 # add_holiday
 sub add_holiday {
@@ -1226,9 +1281,9 @@ sub teams_rename {
   $win->title("Rename Team");
   $win->configure(-height => 400,
 		  -width => 400,
-		  -background => 'white',
+		  -background => $default_background,
 		  );
-  $win->optionAdd('*font*', "Helvetica 10");
+  $win->optionAdd('*font*', $default_font);
 
   my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
 
@@ -1321,8 +1376,8 @@ sub roster_mk_pdf {
 		 -w => 570,
 		 -padding => 5,
 		 -padding_right => 10,
-		 -background_color_odd => "lightgray",
-		 -background_color_even => "white",
+		 -background_color_odd => $default_background_odd,
+		 -background_color_even => $default_background_even,
 		 -header_props => $header_props,
 		);
   
@@ -1339,8 +1394,8 @@ sub roster_mk_pdf {
 		 -w => 570,
 		 -padding => 5,
 		 -padding_right => 10,
-		 -background_color_odd => "lightgray",
-		 -background_color_even => "white",
+		 -background_color_odd => $default_background_odd,
+		 -background_color_even => $default_background_even,
 		 -header_props => $header_props,
 		);
 
@@ -1391,10 +1446,10 @@ sub init_new_game {
   $win->title("Setup a new Season");
   $win->configure(-height => 400,
                   -width => 800,
-                  -background => 'white',
+                  -background => $default_background,
      );
   $win->geometry('-500-500');
-  $win->optionAdd('*font', 'Helvetica 9');
+  $win->optionAdd('*font', $default_font);
 
   my $t;
   
@@ -1467,7 +1522,7 @@ sub init_new_game {
   
   my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
 					 -height => 3, -selectmode => "single",
-					 -width => 30)->pack(-fill => 'x');
+					 -width => 30, -heigh => 5)->pack(-fill => 'x');
   $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => "lightgrey", -anchor=>'w'); 
   $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
   $time_field_lb->columnWidth(0,-char => 15);
@@ -1550,37 +1605,6 @@ sub init_new_game {
 				 );
   $rand_but->pack(-side => 'bottom', -fill => 'x');
 
-
-  # Right Frame: Proposed Schedule
-  my $sf = $sched_fr->Frame(-pady => 10, -border => 1);
-  $sf->Label(-text => 'Proposed Schedule: ', 
-			 -width => 30)->pack(-side => 'top');
-  my $sl = $sf->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
-			 -header => 1, -selectmode => 'single', -width
-			 => 80,)->pack(-fill => 'x');
-  
-  $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
-  $sl->columnWidth(0, -char => 6);
-  $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
-  $sl->columnWidth(1, -char => 10);
-  $sl->header('create', 2, -itemtype => 'text', -text => 'Time');
-  $sl->columnWidth(2, -char => 6);
-  $sl->header('create', 3, -itemtype => 'text', -text => 'Field 1');
-  $sl->columnWidth(3, -char => 8);
-  $sl->header('create', 4, -itemtype => 'text', -text => 'Field 2');
-  $sl->columnWidth(4, -char => 8);
-  $sl->header('create', 5, -itemtype => 'text', -text => 'Field 1');
-  $sl->columnWidth(5, -char => 8);
-  $sl->header('create', 6, -itemtype => 'text', -text => 'Field 2');
-  $sl->columnWidth(6, -char => 8);
-  # Only for outdoor schedules..
-  $sl->header('create', 7, -itemtype => 'text', -text => 'Lining');
-  $sl->columnWidth(7, -char => 6);
-  
-  $sf->pack(-side => 'top', -fill => 'x');
-
-  $top_fr->pack(-side => 'top', -fill => 'x');
-  
   # Buttons at bottom of frame, one for Quit, one to Generate, one to
   # Accept proposed season.  Idea is that you can "Generate a schedule
   # multiple times, but only accept it once.  FIXME: Done needs work.
@@ -2647,7 +2671,7 @@ $top->configure(-title => "No game file loaded",
 $top->geometry('-300-300');
 
 # Default font.  
-$top->optionAdd('*font', 'Helvetica 10');
+$top->optionAdd('*font', $default_font);
 
 # Use this to set default colors.  
 $top->optionAdd('*TkScore*background', '#F0F0F0');
