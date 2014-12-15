@@ -997,8 +997,6 @@ sub generate_schedule {
 
   my @times_fields;
   
-  
-
   # Validate inputs.  Should be in the Setup a New Season window, with
   # the 'Done' button disabled until all the required info is entered.
 
@@ -1161,7 +1159,7 @@ sub generate_schedule {
       $sched_week++;
     }
 
-    if (&propsed_schedule) {
+    if (&proposed_schedule(@times_fields)) {
     }
     
     # Need to put in a message box here which enables the 'Done'
@@ -1193,21 +1191,30 @@ sub accept_schedule {
 
 sub proposed_schedule {
 
-  my $num_games_week = shift @_;
+  my $ref = shift @_;
+  my @times_fields = @$ref;
 
-  my $win = MainWindow-new();
+  my $num_games_week = $times_fields+1;
+
+
+  my $win = MainWindow->new();
   $win->title("Proposed Schedule");
   $win->configure(-height => 400,
 		  -width => 400,
 		  -background => $default_background,
 		 );
   $win->optionAdd('*font*' => $default_font);
+  
+  # Top Frame: Proposed Schedule
+  my $sched_fr = $win->Frame(-pady => 10, -border => 1);
+  
+  # Buttons go here...
+  my $but_fr = $win->Frame(-pady => 10, -border => 1);
 
-  # Right Frame: Proposed Schedule
-  my $sf = $sched_fr->Frame(-pady => 10, -border => 1);
-  $sf->Label(-text => 'Proposed Schedule: ', 
-			 -width => 30)->pack(-side => 'top');
-  my $sl = $sf->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
+  # Build the Schedule HList, scolled if need be.
+  $sched_fr->Label(-text => 'Proposed Schedule: ', 
+		   -width => 30)->pack(-side => 'top');
+  my $sl = $sched_fr->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
 			 -header => 1, -selectmode => 'single', -width
 			 => 80,)->pack(-fill => 'x');
   
@@ -1215,23 +1222,32 @@ sub proposed_schedule {
   $sl->columnWidth(0, -char => 6);
   $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
   $sl->columnWidth(1, -char => 10);
-  $sl->header('create', 2, -itemtype => 'text', -text => 'Time');
-  $sl->columnWidth(2, -char => 6);
-  $sl->header('create', 3, -itemtype => 'text', -text => 'Field 1');
-  $sl->columnWidth(3, -char => 8);
-  $sl->header('create', 4, -itemtype => 'text', -text => 'Field 2');
-  $sl->columnWidth(4, -char => 8);
-  $sl->header('create', 5, -itemtype => 'text', -text => 'Field 1');
-  $sl->columnWidth(5, -char => 8);
-  $sl->header('create', 6, -itemtype => 'text', -text => 'Field 2');
-  $sl->columnWidth(6, -char => 8);
+  for (my $i = 0; $i < $num_games_week; $i++) {
+    $sl->header('create', 2+$i, -itemtype => 'text', -text => $time_field[$i]);
+    $sl->columnWidth(2+$i, -char => 10);
+  }
+
   # Only for outdoor schedules..
   $sl->header('create', 7, -itemtype => 'text', -text => 'Lining');
   $sl->columnWidth(7, -char => 6);
-  
-  $sf->pack(-side => 'top', -fill => 'x');
 
-  $top_fr->pack(-side => 'top', -fill => 'x');
+
+  # Create the buttons
+
+  
+  my $accept_but = $but_fr->Button(-text => 'Accept' -command => [ $win => 'destroy' ]);
+  my $cancel_but = $but_fr->Button(-text => 'Cancel' -command => [ $win => 'destroy' ]);
+
+  # Spacer frames
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $accept_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $cancel_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+
+  
+  $sched_fr->pack(-side => 'top', -fill => 'x');
+  $but_fr->pack(-side => 'bot', -fill => 'x');
 }
   
 #---------------------------------------------------------------------
@@ -1454,7 +1470,8 @@ sub init_new_game {
   my $t;
   
   my $top_fr = $win->Frame();
-  
+  $top_fr->pack(-fill => 'both');
+
   my $setup_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
   my $team_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
   my $sched_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
@@ -1539,8 +1556,7 @@ sub init_new_game {
 				 $field = '';
 
 			    } }
-			 );
-  $dfadd_b->pack(-side => 'left', -fill => 'x');
+			 )->pack(-side => 'left');
   
   my $dfdel_b = $tmf->Button(-text => 'Delete Time/Field',-command => sub
 			     { $time_field_lb->delete('entry',$time_field_lb->info('selection')) 
@@ -1549,7 +1565,10 @@ sub init_new_game {
 			       $field = '';
 			     }
 			    );
-  $dfdel_b->pack(-side => 'left', -fill => 'x');
+
+
+  $dfadd_b->pack(-side => 'left', -fill => 'x');
+  $dfdel_b->pack(-side => 'bottom', -fill => 'x');
   $tmf->pack(-side => 'top', -fill => 'x');
   
 
@@ -1586,7 +1605,7 @@ sub init_new_game {
   $hfdel_b->pack(-side => 'bottom', -fill => 'x');
   
   #---------------------
-  # Middle Frame: Teams
+  # Right Frame: Teams
   my @teams_temp;
   my @entries;
   $team_fr->Label(-text => 'Team Names:')->pack(-side => 'top');
@@ -1633,7 +1652,7 @@ sub init_new_game {
   $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
   $done_but->pack(-side => 'right', -fill => 'x');
   $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'right', -expand => 1);
-
+  
   # Pack entire frame  of buttons...
   $but_fr->pack(-side => 'bottom', -fill => 'x');
 }
