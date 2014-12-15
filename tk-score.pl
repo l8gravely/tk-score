@@ -81,6 +81,7 @@ my $NeedSave = 0;
 $|=1;
 
 #---------------------------------------------------------------------
+my @initial_team_names = qw(one two three four five six seven eight nine);
 my @matches = ();
 my @match_dates = ();
 my @scores = ( '','F',0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
@@ -144,8 +145,8 @@ my %sched_template =
 	  8  => [ "5-1", "6-4", "3-2", "", "", "6" ],
 	  9  => [ "2-6", "3-5", "1-4", "", "", "3" ],
 	  10  => [ "3-1", "2-4", "6-5", "", "", "1" ],
-	  11 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
-	  12 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  11 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	  12 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
     8 => {
 	  0  => [ "1-7", "2-3", "5-8", "4-6", "", "1" ],
@@ -1159,7 +1160,7 @@ sub generate_schedule {
       $sched_week++;
     }
 
-    if (&proposed_schedule(@times_fields)) {
+    if (&proposed_schedule(\@times_fields)) {
     }
     
     # Need to put in a message box here which enables the 'Done'
@@ -1194,7 +1195,7 @@ sub proposed_schedule {
   my $ref = shift @_;
   my @times_fields = @$ref;
 
-  my $num_games_week = $times_fields+1;
+  my $num_games_week = $#times_fields+1;
 
 
   my $win = MainWindow->new();
@@ -1215,28 +1216,31 @@ sub proposed_schedule {
   $sched_fr->Label(-text => 'Proposed Schedule: ', 
 		   -width => 30)->pack(-side => 'top');
   my $sl = $sched_fr->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
-			 -header => 1, -selectmode => 'single', -width
-			 => 80,)->pack(-fill => 'x');
+			       -header => 1, -selectmode => 'single', -width
+			       => 80,)->pack(-fill => 'x');
   
   $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
   $sl->columnWidth(0, -char => 6);
   $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
   $sl->columnWidth(1, -char => 10);
-  for (my $i = 0; $i < $num_games_week; $i++) {
-    $sl->header('create', 2+$i, -itemtype => 'text', -text => $time_field[$i]);
-    $sl->columnWidth(2+$i, -char => 10);
+
+  my $base = 2;
+  for (my $i = 0; $i <= $#times_fields; $i++) {
+    $sl->header('create', $base+$i, -itemtype => 'text', -text => join(" ",$times_fields[$i]->{Time},$times_fields[$i]->{Field}));
+    $sl->columnWidth($base+$i, -char => 10);
   }
 
+  $base = $base + $#times_fields + 1;
   # Only for outdoor schedules..
-  $sl->header('create', 7, -itemtype => 'text', -text => 'Lining');
+  $sl->header('create', $base, -itemtype => 'text', -text => 'Lining');
   $sl->columnWidth(7, -char => 6);
 
 
   # Create the buttons
 
   
-  my $accept_but = $but_fr->Button(-text => 'Accept' -command => [ $win => 'destroy' ]);
-  my $cancel_but = $but_fr->Button(-text => 'Cancel' -command => [ $win => 'destroy' ]);
+  my $accept_but = $but_fr->Button(-text => 'Accept', -command => [ $win => 'destroy' ]);
+  my $cancel_but = $but_fr->Button(-text => 'Cancel', -command => [ $win => 'destroy' ]);
 
   # Spacer frames
   $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
@@ -1247,7 +1251,7 @@ sub proposed_schedule {
 
   
   $sched_fr->pack(-side => 'top', -fill => 'x');
-  $but_fr->pack(-side => 'bot', -fill => 'x');
+  $but_fr->pack(-side => 'bottom', -fill => 'x');
 }
   
 #---------------------------------------------------------------------
@@ -1616,6 +1620,9 @@ sub init_new_game {
 			     -width => 25,
 			    )->pack(-side => 'left');
     $f->pack(-side => 'top', -fill => 'x');
+
+    # Fill in temp names
+    $teams_temp[$i] = $initial_team_names[$i];
   }
 
   # Let's me be lazy and enter team names, then randomize them.
