@@ -233,6 +233,8 @@ my $numteams = $teamcnt[0];
 
 my @playoff_rnds = qw(3 2 1 0);
 my @games_per_week = qw(1 2 3 4 5 6);
+
+# FIXME!  This needs to be much more dynamic in how we figure it out...
 my $matches_per_week = 4;
 
 #my $num_playoffs = $playoff_rnds[0];
@@ -280,7 +282,7 @@ sub cleanup_and_exit {
       &do_exit($dialog,$top) if ($answer eq "Exit without Save");
       
       if ($answer eq "Save and Exit") {
-	$game_file = &save_game_file_as($top, $game_file,
+	$game_file = &save_season_file_as($top, $game_file,
 					\@teams,\@matches,\%standings,\%season);
 	# Only exit if we actually picked a filename to save to...
 	if ($game_file ne "") {
@@ -959,6 +961,9 @@ sub randomize_teams {
 #---------------------------------------------------------------------
 # Takes input from the "Setup a new Season" window and generates a
 # schedule which you need to approve.  FIXME: add summary and approval window.
+#
+# TODO: pass in a single structure will all info, return proper
+# schedule somehow.  Second hashref?
 
 sub generate_schedule {
   my $tmp_ref;
@@ -1431,12 +1436,12 @@ sub edit_season {
 #---------------------------------------------------------------------
 # Piss poor function name, FIXME.  
 
-sub init_new_game {
+sub init_new_season {
   my $top = shift;
 
   my $tmf;  # Temp Frame
 
-  print "init_new_game()\n";
+  print "init_new_season()\n";
 
   my $game_per_week = 4;
   my $playoff_cnt = $playoff_rnds[0];
@@ -2203,7 +2208,7 @@ sub chgcolor {
 }
 
 #---------------------------------------------------------------------
-sub load_game_file {
+sub load_season_file {
   my $file = shift;
 
   my $matchid = 0;
@@ -2281,7 +2286,7 @@ sub load_game_file {
 }
 
 #---------------------------------------------------------------------
-sub select_game_file {
+sub select_season_file {
   my $top = shift;
   my $file = shift;
 
@@ -2294,12 +2299,12 @@ sub select_game_file {
   
   my $gf = $fs->Show;
   
-  if (&load_game_file($gf)) {
+  if (&load_season_file($gf)) {
     # Reset window Title to game_file
     $top->configure(title => $game_file);
   }
   else {
-    print "Error loading.  Look in select_game_file()\n";
+    print "Error loading.  Look in select_season_file()\n";
   }
 }
   
@@ -2307,7 +2312,7 @@ sub select_game_file {
 # Need to check the return value here and NOT exit if we cancel the
 # save. 
 
-sub save_game_file_as {
+sub save_season_file_as {
   my $top = shift;
   my $gf = shift;
   my $teamref = shift;
@@ -2334,7 +2339,7 @@ sub save_game_file_as {
       $savefile .= ".tks";
     }  
     
-    if (write_game_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
+    if (write_season_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
       # Update our base report file name
       $rpt_file = $savefile;
       $rpt_file =~ s/\.tks$//;
@@ -2348,7 +2353,7 @@ sub save_game_file_as {
 }
 #---------------------------------------------------------------------
 # double check we've got a valid game file to save to first...
-sub save_game_file {
+sub save_season_file {
   my $top = shift;
   my $gf = shift;
   my $teamref = shift;
@@ -2356,29 +2361,29 @@ sub save_game_file {
   my $standingsref = shift;
   my $seasonref = shift;
 
-  print "save_game_file($gf, .... )\n";
+  print "save_season_file($gf, .... )\n";
   if ($gf eq "") {
-    $gf = &save_game_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
+    $gf = &save_season_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
     if ($gf eq "") {
       # Some sort of error handling here...
     }
   }
   else {
-	&write_game_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+	&write_season_file($gf,$teamref,$matchref,$standingsref,$seasonref);
   }	
 }
 
 #---------------------------------------------------------------------
 # FIXME - better error handling needed here!
 
-sub write_game_file {
+sub write_season_file {
   my $gf = shift;
   my $teamref = shift;
   my $matchref = shift;
   my $standingsref = shift;
   my $seasonref = shift;
 
-  print "write_game_file($gf, .... )\n";
+  print "write_season_file($gf, .... )\n";
 
   # We could purge $matches[#]->{DTD} but we unconditionally re-create
   # it on load, so that's ok. 
@@ -2586,18 +2591,18 @@ sub mkbuttons {
   
   $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
   
-  $buttons->Button(-text => 'Load',-command => sub { &select_game_file($top,$game_file); },
+  $buttons->Button(-text => 'Load',-command => sub { &select_season_file($top,$game_file); },
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save',-command => sub { 
 		     &save_curmatch($curdate);
-		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
+		     &save_season_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  )->pack(-side => 'left', -expand =>'yes');
   
   $buttons->Button(-text => 'Save As',-command => sub { 
 		     &save_curmatch($curdate);
-		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
+		     $game_file = &save_season_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  )->pack(-side => 'left', -expand =>'yes');
   
@@ -2668,7 +2673,7 @@ $rpt_file =~ s/\.tks$//;
 
 # Load the game file and generate a report if asked.
 if ($game_file && $do_report) {
-  &load_game_file($game_file);
+  &load_season_file($game_file);
   &make_report();
   &Tk::exit;
 }
@@ -2704,21 +2709,21 @@ my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 #---------------------------------------------------------------------
 # Season Menu
 $m_season->command(-label => '~New     ', -command => sub { 
-		     &init_new_game($top); },
+		     &init_new_season($top); },
 		  );
 $m_season->command(-label => '~Open    ', -command => sub {
-		     &select_game_file($top,$game_file);
+		     &select_season_file($top,$game_file);
 		   },
 		  );
 $m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
 $m_season->command(-label => '~Save    ', -command => sub { 
 		     &save_curmatch($curdate);
-		     &save_game_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
+		     &save_season_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
 		   },
 		  );
 $m_season->command(-label => '~Save As ', -command => sub { 
 		     &save_curmatch($curdate);
-		     $game_file = &save_game_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
+		     $game_file = &save_season_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
 			   },
   );
 $m_season->separator();
@@ -2824,7 +2829,7 @@ $bottomframe->pack(-side => 'top', -fill => 'x');
 
 if ($game_file ne "") {
   $top->configure(title => $game_file);
-  &load_game_file($game_file);
+  &load_season_file($game_file);
 }
 &MainLoop;
 
