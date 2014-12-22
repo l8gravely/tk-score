@@ -348,6 +348,7 @@ sub byweektimefield {
 
 sub bydatetimefield {
 
+  $a <=> $b ||
   $a->{DTD} <=> $b->{DTD} ||
   $a->{Time} cmp $b->{Time} ||
   $a->{Field} cmp $b->{Field};
@@ -1011,6 +1012,62 @@ sub generate_schedule {
 
   if (&validate($num_teams,$start_date,$season_name,\@team_names)) {
     
+    my $num_games_week = $#times_fields+1;
+    my $win = MainWindow->new();
+    $win->title("Proposed Schedule");
+    $win->configure(-height => 400,
+		    -width => 400,
+		    -background => $default_background,
+		   );
+    $win->optionAdd('*font*' => $default_font);
+    
+    # Top Frame: Proposed Schedule
+    my $sched_fr = $win->Frame(-pady => 10, -border => 1);
+    
+    # Buttons go here...
+    my $but_fr = $win->Frame(-pady => 10, -border => 1);
+    
+    # Build the Schedule HList, scolled if need be.
+    $sched_fr->Label(-text => 'Proposed Schedule: ', 
+		     -width => 30)->pack(-side => 'top');
+    my $sl = $sched_fr->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
+				 -header => 1, -selectmode => 'single', -width
+				 => 80,)->pack(-fill => 'x');
+    
+    $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
+    $sl->columnWidth(0, -char => 6);
+    $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
+    $sl->columnWidth(1, -char => 10);
+    
+    my $base = 2;
+    for (my $i = 0; $i <= $#times_fields; $i++) {
+      $sl->header('create', $base+$i, -itemtype => 'text', -text => $times_fields[$i]->{Time}." ". $times_fields[$i]->{Field});
+      $sl->columnWidth($base+$i, -char => 10);
+    }
+    
+    $base = $base + $#times_fields + 1;
+    # Only for outdoor schedules..
+    $sl->header('create', $base, -itemtype => 'text', -text => 'Lining');
+    $sl->columnWidth(7, -char => 6);
+    
+    
+    # Create the buttons
+    
+    
+    my $accept_but = $but_fr->Button(-text => 'Accept', -command => [ $win => 'destroy' ]);
+    my $cancel_but = $but_fr->Button(-text => 'Cancel', -command => [ $win => 'destroy' ]);
+    
+    # Spacer frames
+    $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+    $accept_but->pack(-side => 'left', -fill => 'x');
+    $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+    $cancel_but->pack(-side => 'left', -fill => 'x');
+    $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+    
+    
+    $sched_fr->pack(-side => 'top', -fill => 'x');
+    $but_fr->pack(-side => 'bottom', -fill => 'x');
+    
     my $n=1;
     foreach my $e (@team_names) {
       my $g = $e->get;
@@ -1043,11 +1100,11 @@ sub generate_schedule {
     $season{Scrimmage} = $do_scrimmage;
     $season{Playoff_Rounds} = $num_playoffs;
     $season{Number_Teams} = $num_teams;
-
+    
     # Initialize Matches array:
     print "Num teams = $num_teams\n";
     my %template = %{$sched_template{$num_teams}};
-
+    
     # Actual week in schedule, template starts at zero for scrimmage
     # week, which is not scored, but _is_ scheduled.  
     my $sched_week = 1;
@@ -1057,18 +1114,18 @@ sub generate_schedule {
     my $is_lining; 
     my $cnt_playoffs = 0;
     foreach my $tmpl_wk (sort { $a <=> $b } keys %template) {
-
+      
       # Skip scrimmage week(s) 
       next if ($tmpl_wk == 0 && $do_scrimmage == 0);
-
+      
       my @week_sched = @{$template{$tmpl_wk}};
-
+      
       # Skip Makeup Week
       next if ($sched_makeup != 1 && $week_sched[0] eq "Make-up");
-
+      
       # Count how many playoffs we scheduled vs Playoff Round.
       next if ($week_sched[0] eq "Playoffs" && $cnt_playoffs++ == $num_playoffs);
-
+      
       # Note!  Week Schedule assumes two fields and two games on each
       # field, along with a Bye and Lining column. 
 
@@ -1160,9 +1217,6 @@ sub generate_schedule {
       $sched_week++;
     }
 
-    if (&proposed_schedule(\@times_fields)) {
-    }
-    
     # Need to put in a message box here which enables the 'Done'
     # button if it's all ok.  
     $done_but->configure(-state => 'normal');
@@ -1187,73 +1241,6 @@ sub accept_schedule {
   &update_standings($match_dates[0]);
 }
 
-#---------------------------------------------------------------------
-# Open new window showing proposed schedule
-
-sub proposed_schedule {
-
-  my $ref = shift @_;
-  my @times_fields = @$ref;
-
-  my $num_games_week = $#times_fields+1;
-
-
-  my $win = MainWindow->new();
-  $win->title("Proposed Schedule");
-  $win->configure(-height => 400,
-		  -width => 400,
-		  -background => $default_background,
-		 );
-  $win->optionAdd('*font*' => $default_font);
-  
-  # Top Frame: Proposed Schedule
-  my $sched_fr = $win->Frame(-pady => 10, -border => 1);
-  
-  # Buttons go here...
-  my $but_fr = $win->Frame(-pady => 10, -border => 1);
-
-  # Build the Schedule HList, scolled if need be.
-  $sched_fr->Label(-text => 'Proposed Schedule: ', 
-		   -width => 30)->pack(-side => 'top');
-  my $sl = $sched_fr->Scrolled('HList', -scrollbars => 'ow', -columns => 8, 
-			       -header => 1, -selectmode => 'single', -width
-			       => 80,)->pack(-fill => 'x');
-  
-  $sl->header('create', 0, -itemtype => 'text', -text => 'Week');
-  $sl->columnWidth(0, -char => 6);
-  $sl->header('create', 1, -itemtype => 'text', -text => 'Date');
-  $sl->columnWidth(1, -char => 10);
-
-  my $base = 2;
-  for (my $i = 0; $i <= $#times_fields; $i++) {
-    $sl->header('create', $base+$i, -itemtype => 'text', -text => join(" ",$times_fields[$i]->{Time},$times_fields[$i]->{Field}));
-    $sl->columnWidth($base+$i, -char => 10);
-  }
-
-  $base = $base + $#times_fields + 1;
-  # Only for outdoor schedules..
-  $sl->header('create', $base, -itemtype => 'text', -text => 'Lining');
-  $sl->columnWidth(7, -char => 6);
-
-
-  # Create the buttons
-
-  
-  my $accept_but = $but_fr->Button(-text => 'Accept', -command => [ $win => 'destroy' ]);
-  my $cancel_but = $but_fr->Button(-text => 'Cancel', -command => [ $win => 'destroy' ]);
-
-  # Spacer frames
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $accept_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $cancel_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-
-  
-  $sched_fr->pack(-side => 'top', -fill => 'x');
-  $but_fr->pack(-side => 'bottom', -fill => 'x');
-}
-  
 #---------------------------------------------------------------------
 # add_holiday
 sub add_holiday {
@@ -1544,7 +1531,7 @@ sub init_new_game {
   my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
 					 -height => 3, -selectmode => "single",
 					 -width => 30, -heigh => 5)->pack(-fill => 'x');
-  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => "lightgrey", -anchor=>'w'); 
+  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
   $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
   $time_field_lb->columnWidth(0,-char => 15);
   $time_field_lb->header('create', 1, -itemtype => 'text', -text => 'Field');
@@ -1754,9 +1741,9 @@ sub update_datelist {
   print "update_datelist()\n";
 
   # Colors.  Wish I could change colors of box borders...
-  $dls_red = $hl->ItemStyle('text', -foreground => '#800000', -background => "lightgrey"); 
-  $dls_blue = $hl->ItemStyle('text', -foreground => '#000080', -background => "lightgrey", -anchor=>'w'); 
-  $dls_green = $hl->ItemStyle('text', -foreground => 'green', -background => "lightgrey", -anchor=>'w'); 
+  $dls_red = $hl->ItemStyle('text', -foreground => '#800000', -background => $default_background); 
+  $dls_blue = $hl->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
+  $dls_green = $hl->ItemStyle('text', -foreground => 'green', -background => $default_background, -anchor=>'w'); 
   $dls_done = $hl->ItemStyle('text', -background => 'lightgreen');
   
   $hl->delete('all');
@@ -2454,7 +2441,7 @@ sub chg_datelist_status {
 
   print "chg_datelist_status($week,$comp)\n";
 
-  my $dls_clear = $match_datelist->ItemStyle('text', -background => 'lightgrey');
+  my $dls_clear = $match_datelist->ItemStyle('text', -background => $default_background);
   my $dls_comp = $match_datelist->ItemStyle('text', -background => 'lightgreen');
 
   my $e = 0;
