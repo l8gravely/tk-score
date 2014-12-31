@@ -2329,8 +2329,9 @@ sub save_season_file_as {
   my $standingsref = shift;
   my $seasonref = shift;
 
-  print "($gf, .... )\n";
   $gf = "new-season.tks"  if ($gf eq "");
+  print "($gf, .... )\n";
+
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
 			    -verify => ['!-d'],
@@ -2348,7 +2349,7 @@ sub save_season_file_as {
       $savefile .= ".tks";
     }  
     
-    if (write_season_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
+    if (&write_season_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
       # Update our base report file name
       $rpt_file = $savefile;
       $rpt_file =~ s/\.tks$//;
@@ -2360,6 +2361,7 @@ sub save_season_file_as {
     }
   }
 }
+
 #---------------------------------------------------------------------
 # double check we've got a valid game file to save to first...
 sub save_season_file {
@@ -2378,7 +2380,7 @@ sub save_season_file {
     }
   }
   else {
-	&write_season_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+    &write_season_file($gf,$teamref,$matchref,$standingsref,$seasonref);
   }	
 }
 
