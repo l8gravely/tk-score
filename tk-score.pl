@@ -1434,7 +1434,6 @@ sub edit_season {
 }
 
 #---------------------------------------------------------------------
-# Piss poor function name, FIXME.  
 
 sub init_new_season {
   my $top = shift;
@@ -1476,41 +1475,51 @@ sub init_new_season {
   $team_fr->pack(-side => 'left', -fill => 'y');
   $sched_fr->pack(-side => 'right', -fill => 'y');
   
+  my $opt_fr = $setup_fr->Frame(-borderwidth => 0, -width => 40, -relief => 'solid');
+  my $opt_left_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
+  my $opt_middle_fr = $opt_fr->Frame(-borderwidth => 0, -width => 60, -relief => 'solid');
+  my $opt_right_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
+
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  $t->Label(-text => 'Season Description:')->pack(-side => 'top');
-  $t->Entry(-textvariable => \$descrip, -width => 40)->pack(-side => 'bottom');
+  $t->Label(-text => 'Season Description:')->pack(-side => 'left');
+  $t->Entry(-textvariable => \$descrip, -width => 40)->pack(-side => 'left', -fill => 'x');
   $t->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->BrowseEntry(-label => 'Num Teams',
+  $opt_fr->pack(-side => 'top', -fill => 'x');
+  $opt_left_fr->BrowseEntry(-label => 'Num Teams',
 			 -variable => \$numteams,
 			 -width => 3,
 			 -choices => \@teamcnt,
-	)->pack(-side => 'top');
+	)->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->BrowseEntry(-label => 'Playoff Rounds',
-			 -variable => \$playoff_cnt,
-			 -width => 3,
-			 -choices => \@playoff_rnds,
-			)->pack(-side => 'top');
+  $opt_right_fr->BrowseEntry(-label => 'Playoff Rounds',
+			     -variable => \$playoff_cnt,
+			     -width => 3,
+			     -choices => \@playoff_rnds,
+			    )->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->BrowseEntry(-label => 'Games per Week',
-			 -variable => \$game_per_week,
-			 -width => 3,
-			 -choices => \@games_per_week,
-			)->pack(-side => 'top');
+  $opt_left_fr->BrowseEntry(-label => 'Games per Week',
+			    -variable => \$game_per_week,
+			    -width => 3,
+			    -choices => \@games_per_week,
+			   )->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->Checkbutton(-variable => \$first_match_scrimmage,
-			 -text => "First Match for Scrimmage? ",
-			)->pack(-side => 'top', -fill => 'x');
+  $opt_right_fr->Checkbutton(-variable => \$first_match_scrimmage,
+			     -text => "First Match for Scrimmage? ",
+			    )->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->Checkbutton(-variable => \$teams_line_fields,
-			 -text => "Teams Line Fields?",
-			)->pack(-side => 'top', -fill => 'x');
+  $opt_left_fr->Checkbutton(-variable => \$teams_line_fields,
+			    -text => "Teams Line Fields?",
+			   )->pack(-side => 'top', -fill => 'x');
   
-  $setup_fr->Checkbutton(-variable => \$schedule_makeup,
-			 -text => "Schedule a makeup Week?",
-			)->pack(-side => 'top', -fill => 'x');
+  $opt_right_fr->Checkbutton(-variable => \$schedule_makeup,
+			      -text => "Schedule a makeup Week?",
+			     )->pack(-side => 'top', -fill => 'x');
   
+  $opt_left_fr->pack(-side => 'left', -fill => 'x');
+  $opt_middle_fr->pack(-side => 'left', -fill => 'x');
+  $opt_right_fr->pack(-side => 'left', -fill => 'x');
+
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $t->Label(-text => 'Start Date:')->pack(-side => 'left');
   $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');

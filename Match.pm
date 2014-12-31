@@ -7,6 +7,14 @@ package Match;
 sub new {
   my $class = shift;
   my $self = {
+	      HomeScore = "",
+	      HomeCoed = 0,
+	      HomePoints = "",
+	      AwayScore = "",
+	      AwayCoed = 0,
+	      AwayPoints = "",
+	      PointsLabels = (),
+	      Type = "G",
 	     };
   bless $self, $class;
   return $self;

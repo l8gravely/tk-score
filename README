@@ -1,0 +1,42 @@
+
+tk-score - a tool for setting up, scoring and reporting on a soccer
+league.  
+
+This is a huge work in progress, and has lots of built-in assumptions
+that are slowing being addressed:
+
+- all data structures are globals, moving slowing to a more Object
+  Oriented setup.
+
+- It's hard coded for an eight or nine team season using round robin
+  so that every team plays each other twice, and at both the earlier and
+  later times.
+
+- all games are scheduled once a week at two times across two fields.
+
+- For outdoor seasons, we have teams lining the fields, which impacts
+  the schedules.
+
+- In the process of updating code to support only six teams, with
+  three different time/field combos on a night.  
+
+
+
+Wishlist:
+
+- automatic schedule generator, instead of hard-codeds ones used now.
+
+- complete move to object oriented perl for data structures.
+
+- better documentation of the data structure used to store data.
+
+- support for versioned data files.  Not too important.
+
+- automated testing of modules.
+
+
+
+Author:   John Stoffel  (john@stoffel.org)
+License:  GPL v2.0
+
+
