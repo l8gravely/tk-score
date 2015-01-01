@@ -134,17 +134,17 @@ my $first_match_scrimmage = 0;
 
 my %sched_template = 
   ( 6 => {
-	  0  => [ "3-2", "4-6", "1-5", "", "", "3" ],
-	  1  => [ "2-1", "3-6", "4-5", "", "", "1" ],
-	  2  => [ "3-4", "2-5", "6-1", "", "", "5" ],
-	  3  => [ "6-4", "1-5", "2-3", "", "", "6" ],
-	  4  => [ "4-1", "6-2", "5-3", "", "", "2" ],
-	  5  => [ "5-6", "1-3", "4-2", "", "", "4" ],
-	  6  => [ "5-4", "1-2", "6-3", "", "", "2" ],
-	  7  => [ "5-2", "4-3", "1-6", "", "", "4" ],
-	  8  => [ "5-1", "6-4", "3-2", "", "", "6" ],
-	  9  => [ "2-6", "3-5", "1-4", "", "", "3" ],
-	  10  => [ "3-1", "2-4", "6-5", "", "", "1" ],
+	  0  => [ "3-2", "4-6", "1-5", "", "3" ],
+	  1  => [ "2-1", "3-6", "4-5", "", "1" ],
+	  2  => [ "3-4", "2-5", "6-1", "", "5" ],
+	  3  => [ "6-4", "1-5", "2-3", "", "6" ],
+	  4  => [ "4-1", "6-2", "5-3", "", "2" ],
+	  5  => [ "5-6", "1-3", "4-2", "", "4" ],
+	  6  => [ "5-4", "1-2", "6-3", "", "2" ],
+	  7  => [ "5-2", "4-3", "1-6", "", "4" ],
+	  8  => [ "5-1", "6-4", "3-2", "", "6" ],
+	  9  => [ "2-6", "3-5", "1-4", "", "3" ],
+	  10  => [ "3-1", "2-4", "6-5", "", "1" ],
 	  11 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	  12 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
@@ -1118,6 +1118,8 @@ sub generate_schedule {
     my $matchid = 0;
     my $is_lining; 
     my $cnt_playoffs = 0;
+
+    # Sort by week number.  
     foreach my $tmpl_wk (sort { $a <=> $b } keys %template) {
       
       # Skip scrimmage week(s) 
@@ -1134,31 +1136,29 @@ sub generate_schedule {
       # Note!  Week Schedule assumes two fields and two games on each
       # field, along with a Bye and Lining column. 
 
-      # Since we have SIX columns, pop off the last two, which are for
-      # byes[5] and lining[6].  This is ugly and I should just change
-      # the data structure.  FIXME!
-      
+      # Since we have N matches + 2 columns, pop off the last two,
+      # which are for byes[5] and lining[6].  This is ugly and I
+      # should just change the data structure.  FIXME!
+
+      my $team_to_line = pop @week_sched;
+      my $team_with_bye = pop @week_sched;
       $lining_team{$week} = "";
+
       if ($do_lining) {
 	$dolining = 1;
-	$is_lining = pop @week_sched;
 
 	# Numbers are team lining, otherwise skip
-	if ($is_lining =~ m/^\d+$/) {
-	  $lining_team{$week} = $teams[$is_lining];
+	if ($team_to_line =~ m/^\d+$/) {
+	  $lining_team{$week} = $team_to_line;
 	} else {
 	  $lining_team{$week} = "tbd";
 	}
       }
 
-      # If we have nine teams, there will be a bye once a week for
-      # some team.  
+      # If we have an odd number of teams, there will be a bye once a
+      # week for some team, otherwise empty.
 
-      $bye_team{$week} = "" || "tbd";
-      my $has_bye = pop @week_sched;
-      if ($has_bye =~ m/^\d+$/) {
-	$bye_team{$week} = $teams[$has_bye];
-      }
+      $bye_team{$week} = $team_with_bye;
       
       # Now fill in the schedule for games this week.
       my $i = 0;
@@ -1888,6 +1888,7 @@ sub update_standings {
   foreach my $m (sort bydatetimefield @matches) {
     my $matchdate = $m->{"Date"};
 
+    #print "m->{Type} = ", $m->{"Type"}, "\n";
     if ($m->{"Type"} eq "G" && &my_dtd($matchdate) <= &my_dtd($curdate)) {
       # Do we have full scores recorded for this match yet?
       if ($m->{"Complete"}) {
