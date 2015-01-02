@@ -127,12 +127,14 @@ my $dolining = 0;   # Do teams need to line during the season?
 my $first_match_scrimmage = 0;
 
 # %sched_template = ( Number_Teams => {
-#                     Week => [game,game,game,game,bye,lining],
+#                     Week => [game,...,gameN,bye,lining],
 #                     ....
 #                    }
 #                  );    
 
 my %sched_template = 
+  # Only three matches per week here.  generate_schedule() needs to
+  # handle this properly.
   ( 6 => {
 	  0  => [ "3-2", "4-6", "1-5", "", "3" ],
 	  1  => [ "2-1", "3-6", "4-5", "", "1" ],
@@ -249,7 +251,7 @@ my @weeks;
 
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
-my %curmatch = &init_matches_per_week($matches_per_week);
+my %curmatch;
 my %standings;
 my %season;
 
@@ -307,6 +309,8 @@ sub do_exit {
 }
 
 #---------------------------------------------------------------------
+# Crying out to be object oriented.  Used by display widgets to enter
+# weekly results.  
 sub init_matches_per_week {
 
   # Matches per-week that are played.
@@ -1008,16 +1012,17 @@ sub generate_schedule {
   # the 'Done' button disabled until all the required info is entered.
 
   print "generate_schedule()\n";
-  print "Num Teams:  $num_teams\n";
-  print "Start Date: $start_date\n";
-  print "Scrimmage = $do_scrimmage\n";
-  print "Schedule Makeup Week = $sched_makeup\n";
-  print "Playoff rounds = $num_playoffs\n";
-  print "Season Name = $season_name\n";
+  print "  Num Teams:  $num_teams\n";
+  print "  Start Date: $start_date\n";
+  print "  Scrimmage = $do_scrimmage\n";
+  print "  Schedule Makeup Week = $sched_makeup\n";
+  print "  Playoff rounds = $num_playoffs\n";
+  print "  Season Name = $season_name\n";
 
   if (&validate($num_teams,$start_date,$season_name,\@team_names)) {
     
     my $num_games_week = $#times_fields+1;
+    print "  Num_games_week = $num_games_week\n";
     my $win = MainWindow->new();
     $win->title("Proposed Schedule");
     $win->configure(-height => 400,
@@ -1057,8 +1062,6 @@ sub generate_schedule {
     
     
     # Create the buttons
-    
-    
     my $accept_but = $but_fr->Button(-text => 'Accept', -command => [ $win => 'destroy' ]);
     my $cancel_but = $but_fr->Button(-text => 'Cancel', -command => [ $win => 'destroy' ]);
     
@@ -1105,7 +1108,8 @@ sub generate_schedule {
     $season{Scrimmage} = $do_scrimmage;
     $season{Playoff_Rounds} = $num_playoffs;
     $season{Number_Teams} = $num_teams;
-    
+    $season{Matches_per_Week} = 3;
+
     # Initialize Matches array:
     print "Num teams = $num_teams\n";
     my %template = %{$sched_template{$num_teams}};
@@ -2115,13 +2119,20 @@ sub update_scores {
 }
 
 #---------------------------------------------------------------------
+# Builds the headers to the frame where scores are entered/updated.
+# Uses a global (bad!) $curmatch which holds N matches per-week.  The
+# values are saved/loaded as the week window is changed to reflect
+# which week we are working on.  How to make this more object
+# oriented in a clean way? 
+#
+# For now, just make the frame big enough for one match per-week which
+# is the minimum, then return a pointer so we can add/delete widgets
+# when we load/initialize new schedules.  
+
 sub init_scores {
   my $top = shift;
-  my $week = shift;
   
-  my $header = $top->Frame;
   my $hf = $top->Frame;
-  my $scoreframe = $top->Frame;
     
   # Headers
   
@@ -2140,9 +2151,17 @@ sub init_scores {
   $hf->Label(-text => "Points",-width => 6)->pack(-side => 'left');
   $hf->pack(-side => 'top', -fill => 'x');
   
-  # Now create the pairs of games, currently maxes out at 4:
-  
-  foreach (my $m=1; $m <= $matches_per_week; $m++) {
+  $top->pack(-side => 'top', -fill => 'x');
+}
+
+#---------------------------------------------------------------------
+# Setup the actual scores in the frames.  
+
+sub setup_scores {
+  my $top = shift;
+  my $num_matches = shift;
+
+  foreach (my $m=1; $m <= $num_matches; $m++) {
     my $f = $top->Frame;
     my $w;
     
@@ -2194,9 +2213,7 @@ sub init_scores {
     $f->pack(-side => 'top',-fill => 'x');
     push @{$curmatch{$m}->{PointsLabels}}, $w;
   }
-  $top->pack(-side => 'top', -fill => 'x');
 }
-
 
 #---------------------------------------------------------------------
 sub chgcolor {
@@ -2219,6 +2236,8 @@ sub load_season_file {
     
     # Needs better error checking here!  We really only need the list
     # of teams and the matches to rebuild every thing else we use. 
+
+    my $mpw = $data->{Matches_per_week};
 
     @teams = @{$data->{Teams}};
     @matches = @{$data->{Matches}};
@@ -2269,6 +2288,7 @@ sub load_season_file {
     }
 
     # Update the week display maybe?
+    &setup_scores($frame, $mpw);
     &load_curmatch($match_dates[0]);
     &update_datelist($match_datelist);
     &update_standings($match_dates[0]);
@@ -2810,9 +2830,9 @@ $m_help->command(-label => 'About');
 
 # Scores are up top, Week display and standings below, side by side.
 
-my $scoreframe=$top->Frame(-border => 2, -relief => 'groove');
-&init_scores($scoreframe,$week);
-&update_scores($curdate);
+my $scoreframe=$top->Frame(-border => 2, -relief => 'groove', -height => 100);
+&init_scores($scoreframe);
+#&update_scores($curdate);
 $scoreframe->pack(-side => 'top', -fill => 'x');
 
 my $bottomframe = $top->Frame();
