@@ -2626,8 +2626,6 @@ my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
 my $m_match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
 my $m_penalty=$mbar->cascade(-label=>"~Penalty", -tearoff => 0);
 my $m_playoffs=$mbar->cascade(-label=>"Playoffs", -tearoff => 0);
-my $m_roster=$mbar->cascade(-label=>"Rosters", -tearoff => 0);
-my $m_teams=$mbar->cascade(-label=>"Teams", -tearoff => 0);
 my $m_schedule=$mbar->cascade(-label=>"Schedule", -tearoff => 0);
 my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
 
@@ -2693,11 +2691,6 @@ $m_playoffs->command(-label => 'Report', -command => sub {
   &playoffs_reports($top,$curweek);},
   );
 
-
-#---------------------------------------------------------------------
-# Teams Menu
-$m_teams->command(-label => 'View', -command => [ \&teams_view, $top, \@teams ],);
-$m_teams->command(-label => 'Rename', -command => [ \&teams_rename, $top, \@teams ],);
 
 #---------------------------------------------------------------------
 # Schedule Menu
