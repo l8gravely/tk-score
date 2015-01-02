@@ -2507,6 +2507,32 @@ sub parseopts {
 }
 
 #---------------------------------------------------------------------
+sub setup_master_menu {
+
+  my $top = MainWindow->new(-class => 'TkScore');
+  $top->configure(-title => "No game file loaded",
+		  -height => 400,
+		  -width => 1000,
+		 );
+  $top->geometry('-300-300');
+  
+  # Default font.  
+  $top->optionAdd('*font', $default_font);
+  
+  # Use this to set default colors.  
+  $top->optionAdd('*TkScore*background', $default_background);
+  
+  # Menu Bar of commands
+  my $mbar=$top->Menu();
+  $top->configure(-menu => $mbar);
+  my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
+
+
+
+  return $top;
+}
+
+#---------------------------------------------------------------------
 # Set the report filename based on our game_file name.
 $rpt_file = $game_file;
 $rpt_file =~ s/\.tks$//;
@@ -2518,6 +2544,7 @@ $rpt_file =~ s/\.tks$//;
 # Parse command line options.
 &parseopts;
 
+my $top = &setup_master_menu;
 
 # Load the game file and generate a report if asked.
 if ($game_file && $do_report) {
@@ -2528,134 +2555,8 @@ if ($game_file && $do_report) {
 
 #---------------------------------------------------------------------
 # MAIN SETUP, turn into a function someday!
-#---------------------------------------------------------------------
-my $top = MainWindow->new(-class => 'TkScore');
-$top->configure(-title => "No game file loaded",
-                -height => 400,
-                -width => 1000,
-               );
-$top->geometry('-300-300');
-
-# Default font.  
-$top->optionAdd('*font', $default_font);
-
-# Use this to set default colors.  
-$top->optionAdd('*TkScore*background', $default_background);
-
-# Menu Bar of commands
-my $mbar=$top->Menu();
-$top->configure(-menu => $mbar);
-my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
-my $m_match=$mbar->cascade(-label=>"~Match", -tearoff => 0);
-my $m_penalty=$mbar->cascade(-label=>"~Penalty", -tearoff => 0);
-my $m_playoffs=$mbar->cascade(-label=>"Playoffs", -tearoff => 0);
-my $m_roster=$mbar->cascade(-label=>"Rosters", -tearoff => 0);
-my $m_teams=$mbar->cascade(-label=>"Teams", -tearoff => 0);
-my $m_schedule=$mbar->cascade(-label=>"Schedule", -tearoff => 0);
-my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
-
-#---------------------------------------------------------------------
-# Season Menu
-$m_season->command(-label => '~New     ', -command => sub { 
-		     &init_new_season($top); },
-		  );
-$m_season->command(-label => '~Open    ', -command => sub {
-		     &select_season_file($top,$game_file);
-		   },
-		  );
-$m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
-$m_season->command(-label => '~Save    ', -command => sub { 
-		     &save_curmatch($curdate);
-		     &save_season_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
-		   },
-		  );
-$m_season->command(-label => '~Save As ', -command => sub { 
-		     &save_curmatch($curdate);
-		     $game_file = &save_season_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
-			   },
-  );
-$m_season->separator();
-$m_season->command(-label => '~Update Standings', -command => sub {
-		     &update_standings($curdate) },
-		  );
-$m_season->separator();
-$m_season->command(-label => '~Report  ', -command => sub {
-		     &make_report($rpt_file,"YYYY-MM-DD") },
-		  );
-$m_season->separator();
-$m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($top,$game_file)},
-  );
-
-#---------------------------------------------------------------------
-# Match Menu
-$m_match->command(-label => 'Reschedule', -command => sub {
-		    &match_reschedule($top,$curdate);},
-		 );
-
-#---------------------------------------------------------------------
-# Penalty Menu
-$m_penalty->command(-label => 'Add', -command => sub {
-  &penalty_add($top,$curweek);},
-  );
-$m_penalty->command(-label => 'Edit', -command => sub {
-  &penalty_edit($top,$curweek);},
-  );
-$m_penalty->command(-label => 'Remove', -command => sub {
-  &penalty_del($top,$curweek);},
-  );
-
-#---------------------------------------------------------------------
-# Playoffs Menu
-$m_playoffs->command(-label => 'Setup', -command => sub {
-  &playoffs_setup($top,$curweek);},
-  );
-$m_playoffs->command(-label => 'Score', -command => sub {
-  &playoffs_score($top,$curweek);},
-  );
-$m_playoffs->command(-label => 'Report', -command => sub {
-  &playoffs_reports($top,$curweek);},
-  );
 
 
-#---------------------------------------------------------------------
-# Teams Menu
-$m_teams->command(-label => 'View', -command => [ \&teams_view, $top, \@teams ],);
-$m_teams->command(-label => 'Rename', -command => [ \&teams_rename, $top, \@teams ],);
-
-#---------------------------------------------------------------------
-# Schedule Menu
-$m_schedule->command(-label => 'View', -command => [ \&schedule_view, $top, @matches ],);
-
-#---------------------------------------------------------------------
-# Help Menu
-$m_help->command(-label => 'Version');
-$m_help->separator;
-$m_help->command(-label => 'About');
-
-# Scores are up top, Week display and standings below, side by side.
-
-my $scoreframe=$top->Frame(-border => 2, -relief => 'groove', -height => 100);
-&init_scores($scoreframe);
-#&update_scores($curdate);
-$scoreframe->pack(-side => 'top', -fill => 'x');
-
-my $bottomframe = $top->Frame();
-
-my $datesframe = $bottomframe->Frame(-border => 2, -relief => 'groove');
-$match_datelist = &init_datelist($datesframe);
-$datesframe->pack(-side => 'left', -fill => 'y');
-
-my $standingsframe = $bottomframe->Frame(-border => 2, -relief => 'groove');
-&init_standings($standingsframe);
-$standingsframe->pack(-side => 'right', -fill => 'y');
-
-$bottomframe->pack(-side => 'top', -fill => 'x');
-
-
-if ($game_file ne "") {
-  $top->configure(title => $game_file);
-  &load_season_file($game_file);
-}
 &MainLoop;
 
 
