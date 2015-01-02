@@ -254,4 +254,205 @@ sub setup_season_menu {
   }
 }
 
+#---------------------------------------------------------------------
+sub select_season_file {
+  my $top = shift;
+  my $file = shift;
+
+  my $fs = $top->FileSelect(
+			    -filter => '*.tks',
+			    -directory => $ENV{'HOME'},
+			   );
+  
+  $fs->geometry("600x400");
+  
+  my $gf = $fs->Show;
+  
+  if (&load_season_file($gf)) {
+    # Reset window Title to game_file
+    $top->configure(title => $game_file);
+  }
+  else {
+    print "Error loading.  Look in select_season_file()\n";
+  }
+}
+  
+#---------------------------------------------------------------------
+# Need to check the return value here and NOT exit if we cancel the
+# save. 
+
+sub save_season_file_as {
+  my $top = shift;
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+  my $seasonref = shift;
+
+  $gf = "new-season.tks"  if ($gf eq "");
+  print "($gf, .... )\n";
+
+  my $fs = $top->FileSelect(-directory => '.',
+			    -filter => "*.tks",
+			    -verify => ['!-d'],
+			    -initialfile => $gf,
+	);
+  $fs->geometry("600x400");
+  my $savefile = $fs->Show;
+
+  if ($savefile eq "") {
+    print "Not saving file: $savefile\n";
+    return $gf;
+  }
+  else {
+    if (!($savefile =~ m/^.*\.tks$/)) {
+      $savefile .= ".tks";
+    }  
+    
+    if (&write_season_file($savefile,$teamref,$matchref,$standingsref,$seasonref)) {
+      # Update our base report file name
+      $rpt_file = $savefile;
+      $rpt_file =~ s/\.tks$//;
+      $top->configure(title => $gf);
+      return $savefile;
+    }
+    else {
+      return undef;
+    }
+  }
+}
+
+#---------------------------------------------------------------------
+# double check we've got a valid game file to save to first...
+sub save_season_file {
+  my $top = shift;
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+  my $seasonref = shift;
+
+  print "save_season_file($gf, .... )\n";
+  if ($gf eq "") {
+    $gf = &save_season_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
+    if ($gf eq "") {
+      # Some sort of error handling here...
+    }
+  }
+  else {
+    &write_season_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+  }	
+}
+
+#---------------------------------------------------------------------
+# FIXME - better error handling needed here!
+
+sub write_season_file {
+  my $gf = shift;
+  my $teamref = shift;
+  my $matchref = shift;
+  my $standingsref = shift;
+  my $seasonref = shift;
+
+  print "write_season_file($gf, .... )\n";
+
+  # We could purge $matches[#]->{DTD} but we unconditionally re-create
+  # it on load, so that's ok. 
+
+  my $data = { Teams => $teamref,
+	       Matches => $matchref,
+	       Standings => $standingsref,
+	       Season => $seasonref,
+	       Version => $gf_version,
+	     };
+  
+  if (! -e $gf) {
+    # FIXME - again error handling...
+  }
+  DumpFile($gf,$data);
+  $NeedSave = 0;
+}
+
+#---------------------------------------------------------------------
+sub load_season_file {
+  my $file = shift;
+
+  my $matchid = 0;
+  my %matchids;
+  if (-f $file) {
+    my $data = LoadFile($file);
+    
+    # Needs better error checking here!  We really only need the list
+    # of teams and the matches to rebuild every thing else we use. 
+
+    my $mpw = $data->{Matches_per_week};
+
+    @teams = @{$data->{Teams}};
+    @matches = @{$data->{Matches}};
+
+    # Data Sanity checks and optimizations
+    foreach my $m (@matches) {
+      # Make sure all dates are in the correct format:
+      if (defined($m->{"DateOrig"}) && $m->{"DateOrig"} ne "") {
+	$m->{"DateOrig"} = &fix_week_date_fmt($m->{"DateOrig"});
+      }
+      if ($m->{"Date"} ne "") {
+	$m->{"Date"} = &fix_week_date_fmt($m->{"Date"});
+	# Hopeful optimization when sorting the matches
+	$m->{"DTD"} = &my_dtd($m->{"Date"});
+      }
+      
+      # Look for MatchID, if not found, add it.
+      if (!defined($m->{"MatchID"})) {
+	$m->{"MatchID"} = $matchid;
+	$matchids{$matchid}++;
+	$matchid++;
+      }
+      else {
+	my $tmatchid = $m->{"MatchID"};
+	if (defined $matchids{$tmatchid}) {
+	  die "Error!  We have duplicated MatchIDs in $file\n\n";
+	}
+	else {
+	  $matchids{$tmatchid}++;
+	}
+      }    
+
+      # Look for Type, if not found assume "G" for Game.
+      if (!defined($m->{"Type"})) {
+	$m->{"Type"} = "G";
+      }
+
+    }
+
+    # Build the @match_dates array so we can quickly get our data,
+    # this will replace the $curweek index soonish
+    my $found = "";
+    undef @match_dates;
+    foreach my $m (sort bydatetimefield @matches) {
+      if ($m->{Date} ne "$found") { 
+	push @match_dates, $m->{Date}; 
+      }
+    }
+
+    # Update the week display maybe?
+    &setup_scores($frame, $mpw);
+    &load_curmatch($match_dates[0]);
+    &update_datelist($match_datelist);
+    &update_standings($match_dates[0]);
+    
+    # Update the rptfile name
+    $rpt_file = $file;
+    $rpt_file =~ s/\.tks$//;
+    
+    # Reset global default game_file
+    $game_file = $file;
+
+    return 1;
+  }
+  # Error, no file to load or some other error.  Needs Cleanup.
+  return 0;
+}
+
+
 1;
