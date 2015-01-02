@@ -2129,6 +2129,7 @@ sub chgcolor {
 
 #---------------------------------------------------------------------
 sub load_season_file {
+  my $top = shift;
   my $file = shift;
 
   my $matchid = 0;
@@ -2222,7 +2223,7 @@ sub select_season_file {
   
   my $gf = $fs->Show;
   
-  if (&load_season_file($gf)) {
+  if (&load_season_file($top,$gf)) {
     # Reset window Title to game_file
     $top->configure(title => $game_file);
   }
@@ -2598,7 +2599,7 @@ $rpt_file =~ s/\.tks$//;
 
 # Load the game file and generate a report if asked.
 if ($game_file && $do_report) {
-  &load_season_file($game_file);
+  &load_season_file($top,$game_file);
   &make_report();
   &Tk::exit;
 }
@@ -2724,7 +2725,7 @@ $bottomframe->pack(-side => 'top', -fill => 'x');
 
 if ($game_file ne "") {
   $top->configure(title => $game_file);
-  &load_season_file($game_file);
+  &load_season_file($top,$game_file);
 }
 &MainLoop;
 
