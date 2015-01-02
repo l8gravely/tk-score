@@ -10,13 +10,13 @@ sub new {
 
   my $mw = MainWindow->new(-class => 'TkScoreSeason');
   my $self = {
-	      top = $mw,
-	      Match_Cur = {},
-	      Matches = [],
-	      Teams = [],
-	      Schedule = { },
-	      Game_file = "",
-	      File_Version = "v2.0",
+	      TOP => $mw,
+	      Match_Cur => {},
+	      Matches => [],
+	      Teams => [],
+	      Schedule => { },
+	      Game_file => "",
+	      File_Version => "v2.0",
 	     };
 
   $mw->configure(-title => "Season Window",
@@ -42,7 +42,7 @@ sub getvar {
 
 #---------------------------------------------------------------------
 sub load_season_file {
-  my ($self, $file) @_;
+  my ($self, $file) = @_;
 
   my $matchid = 0;
   my %matchids;
