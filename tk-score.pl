@@ -10,7 +10,9 @@ use strict;
 
 # Where you can find extra modules?
 use lib "$ENV{HOME}/lib/perl";
-# Remove cwd
+use Season;
+
+# Remove cwd, why?  
 no lib ".";
 
 use IO::Handle;
@@ -422,85 +424,6 @@ sub date2week {
   }
   # Error condition...
   return 0;
-}
-
-#---------------------------------------------------------------------
-sub penalty_init {
-  my $top = shift;
-
-  my $win = MainWindow->new();
-  $win->title("Penalties");
-  $win->configure(-height => 400,
-                  -width => 800,
-                  -background => $default_background,
-	);
-  $win->geometry('-500-500');
-  $win->optionAdd('*font', $default_font);
-  
-
-  my $hl = $win->Scrolled('HList', -scrollbars => 'ow',
-                          -columns=>3, -header => 1, 
-			  -selectmode => 'single', -width => 40,
-			 )->pack(-fill => 'x'); 
-  $hl->configure(-browsecmd => [ \&datelist_browse, $hl ]);
-  $hl->header('create', 0, -itemtype => 'text', -text => "Date");
-  $hl->columnWidth(0, -char => 16);
-  $hl->header('create', 1, -itemtype => 'text', -text => "Team");
-  $hl->columnWidth(1, -char => 26);
-  $hl->header('create', 2, -itemtype => 'text', -text => "Reason");
-  $hl->columnWidth(2, -char => 36);
-  
-  &load_penalties($hl);
-  return $hl;
-}
-
-#---------------------------------------------------------------------
-sub penalty_browse {
-
-
-}
-
-#---------------------------------------------------------------------
-sub penalty_add {
-  my $top = shift;
-  my $curweek = shift;
-
-  my $reason = "";
-  my $date = "";
-  my $plb;
-  my $f = $top->Frame();
-  $f->LabEntry(-label => "Reason: ", -textvariable => \$reason, 
-			   -width => 30, labelPack => [ -side => 'left'])->pack(-side => 'left');
-  
-  my $add_but = $f->Button(-text => 'Add', -command => sub { 
-			     if ($reason ne '') {
-			       $plb->insert('end',$date,$reason);
-			       $reason = '';
-			       $date = '';
-			     }
-			   }
-			  );
-  
-  my $del_but = $f->Button(-text => 'Delete', -command => sub { 
-			     if ($reason ne '') {
-			       $plb->delete('end',$date,$reason);
-			       $reason = '';
-			       $date = '';
-			     }
-			   }
-			  );
-  
-}
-
-#---------------------------------------------------------------------
-sub penalty_edit {
-
-
-}
-#---------------------------------------------------------------------
-sub penalty_del {
-
-
 }
 
 #---------------------------------------------------------------------
@@ -2617,7 +2540,7 @@ $top->geometry('-300-300');
 $top->optionAdd('*font', $default_font);
 
 # Use this to set default colors.  
-$top->optionAdd('*TkScore*background', '#F0F0F0');
+$top->optionAdd('*TkScore*background', $default_background);
 
 # Menu Bar of commands
 my $mbar=$top->Menu();
