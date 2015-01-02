@@ -7,22 +7,15 @@ package Match;
 sub new {
   my $class = shift;
   my $self = {
-	      Week => 0,
-	      Date => '',
-	      Time => '',
-	      Field => '',
-	      Home => 0,
-	      Away => 0,
-	      HomeScore => "",
-	      HomeCoed => 0,
-	      HomePoints => 0,
-	      AwayScore => "",
-	      AwayCoed => 0,
-	      AwayPoints => 0,
-	      Complete => 0,
-	      Type => '',
+	      HomeScore = "",
+	      HomeCoed = 0,
+	      HomePoints = "",
+	      AwayScore = "",
+	      AwayCoed = 0,
+	      AwayPoints = "",
+	      PointsLabels = (),
+	      Type = "G",
 	     };
-  
   bless $self, $class;
   return $self;
 }

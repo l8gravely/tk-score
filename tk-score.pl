@@ -309,6 +309,28 @@ sub do_exit {
 }
 
 #---------------------------------------------------------------------
+# Crying out to be object oriented.  Used by display widgets to enter
+# weekly results.  
+sub init_matches_per_week {
+
+  # Matches per-week that are played.
+  my $num = shift @_;
+
+  my %t;
+
+  for (my $m=1; $m <= $num; $m++) {
+	$t{$m}->{HomeScore} = "";
+	$t{$m}->{HomeCoed} = 0;
+	$t{$m}->{HomePoints} = "";
+	$t{$m}->{AwayScore} = "";
+	$t{$m}->{AwayCoed} = 0;
+	$t{$m}->{AwayPoints} = "";
+	$t{$m}->{PointsLabels} = ();
+	$t{$m}->{Type} = "G";
+  }
+  return %t;
+}
+#---------------------------------------------------------------------
 # Decodes a date and returns the number of days from Jan 1, 1970.
 sub my_dtd {
   my $d = shift @_;
