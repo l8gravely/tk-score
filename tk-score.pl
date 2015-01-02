@@ -2527,7 +2527,19 @@ sub setup_master_menu {
   $top->configure(-menu => $mbar);
   my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
 
-
+  #---------------------------------------------------------------------
+  # Season Menu
+  $m_season->command(-label => '~New     ', -command => sub { 
+		       &init_new_season($top); },
+		    );
+  $m_season->command(-label => '~Open    ', -command => sub {
+		       &select_season_file($top,$game_file);
+		     },
+		    );
+  $m_season->separator();
+  $m_season->command(-label => '~Quit    ', -command => sub{ 
+		       &cleanup_and_exit($top,$game_file)},
+		    );
 
   return $top;
 }

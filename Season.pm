@@ -122,6 +122,14 @@ sub load_season_file {
 }
 
 # ---------------------------------------------------------------------
+# Exit and close this season window.
+
+sub season_close {
+
+
+}
+
+# ---------------------------------------------------------------------
 # We now only setup this season menu in a new top window when we
 # actually do a new season, or load a season.  This is so we have a
 # place to hang off the main $season blessed variable which holds all
@@ -151,13 +159,6 @@ sub setup_season_menu {
   
   #---------------------------------------------------------------------
   # Season Menu
-  $m_season->command(-label => '~New     ', -command => sub { 
-		       &init_new_season($top); },
-		    );
-  $m_season->command(-label => '~Open    ', -command => sub {
-		       &select_season_file($top,$game_file);
-		     },
-		    );
   $m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
   $m_season->command(-label => '~Save    ', -command => sub { 
 		       &save_curmatch($curdate);
@@ -178,7 +179,7 @@ sub setup_season_menu {
 		       &make_report($rpt_file,"YYYY-MM-DD") },
 		    );
   $m_season->separator();
-  $m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($top,$game_file)},
+  $m_season->command(-label => '~Close    ', -command => sub{ &season_close($top,$game_file)},
 		    );
   
   #---------------------------------------------------------------------
