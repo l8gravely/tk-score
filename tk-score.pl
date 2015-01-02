@@ -2802,29 +2802,6 @@ $m_playoffs->command(-label => 'Report', -command => sub {
 
 
 #---------------------------------------------------------------------
-# Roster Menu
-$m_roster->command(-label => 'New', -state => 'disable', 
-		   -command => sub {
-		     &roster_edit($top,$curweek);},
-		  );
-$m_roster->command(-label => 'Edit',  -state => 'disable',-command => sub {
-  &roster_edit($top,$curweek);},
-  );
-$m_roster->command(-label => 'View', -state => 'disable', -command => sub {
-  &roster_show($top,$curweek);},
-  );
-$m_roster->command(-label => 'Export to PDF', -state => 'disable', -command => sub {
-  &roster_mk_pdf($top,$curweek);},
-  );
-$m_roster->command(-label => 'Export to CSV', -state => 'disable', -command => sub {
-  &roster_mk_csv($top,$curweek);},
-  );
-$m_roster->command(-label => 'Mail to Managers', -state => 'disable', -command => sub {
-  &roster_mailto_managers($top,$curweek);},
-  );
-
-
-#---------------------------------------------------------------------
 # Teams Menu
 $m_teams->command(-label => 'View', -command => [ \&teams_view, $top, \@teams ],);
 $m_teams->command(-label => 'Rename', -command => [ \&teams_rename, $top, \@teams ],);
