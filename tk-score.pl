@@ -1901,8 +1901,8 @@ sub setup_master_menu {
 
   my $top = MainWindow->new(-class => 'TkScore');
   $top->configure(-title => "No game file loaded",
-		  -height => 200,
-		  -width => 400,
+		  -height => 100,
+		  -width => 200,
 		 );
   $top->geometry('-300-300');
   
@@ -1950,15 +1950,17 @@ my $top = &setup_master_menu;
 
 # Load the game file and generate a report if asked.
 if ($game_file && $do_report) {
-  &season_load_file($top,$game_file);
-  &make_report();
+  my $season = Season->new();
+  $season->season_load_file($game_file);
+  $season->report_generate();
   &Tk::exit;
 }
-
-if ($game_file) {
+# Load the game file if asked
+elsif ($game_file) {
   my $season = Season->new();
   $season->season_open($game_file);
 }
+
 #---------------------------------------------------------------------
 # MAIN
 
