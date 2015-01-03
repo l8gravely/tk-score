@@ -16,6 +16,7 @@ sub new {
 	      Schedule => { },
 	      Game_file => "",
 	      File_Version => "v2.0",
+	      NeedSave => 0,
 	     };
 
   $top->configure(-title => "Season Window",
@@ -54,7 +55,10 @@ sub season_close {
 # the pointers to data and such we need.
 
 sub season_win_init {
+  my ($self) = @_;
+
   my $top = MainWindow->new(-class => 'TkScore');
+  $self->{TOP} = $top;
   $top->configure(-title => "No game file loaded",
 		  -height => 400,
 		  -width => 1000,
@@ -105,36 +109,6 @@ sub season_win_init {
   $m_match->command(-label => 'Reschedule', -command => sub {
 		      &match_reschedule($top,$curdate);},
 		   );
-  
-  #---------------------------------------------------------------------
-  # Penalty Menu
-  $m_penalty->command(-label => 'Add', -command => sub {
-			&penalty_add($top,$curweek);},
-		     );
-  $m_penalty->command(-label => 'Edit', -command => sub {
-			&penalty_edit($top,$curweek);},
-		     );
-  $m_penalty->command(-label => 'Remove', -command => sub {
-			&penalty_del($top,$curweek);},
-		     );
-  
-  #---------------------------------------------------------------------
-  # Playoffs Menu
-  $m_playoffs->command(-label => 'Setup', -command => sub {
-			 &playoffs_setup($top,$curweek);},
-		      );
-  $m_playoffs->command(-label => 'Score', -command => sub {
-			 &playoffs_score($top,$curweek);},
-		      );
-  $m_playoffs->command(-label => 'Report', -command => sub {
-			 &playoffs_reports($top,$curweek);},
-		      );
-  
-  
-  #---------------------------------------------------------------------
-  # Teams Menu
-  $m_teams->command(-label => 'View', -command => [ \&teams_view, $top, \@teams ],);
-  $m_teams->command(-label => 'Rename', -command => [ \&teams_rename, $top, \@teams ],);
   
   #---------------------------------------------------------------------
   # Schedule Menu
@@ -205,7 +179,9 @@ sub season_open {
 # save. 
 
 sub _season_save_file_as {
-  my $top = shift;
+  my ($self,$file) = @_;
+  my $top = self->{TOP};
+
   my $gf = shift;
   my $teamref = shift;
   my $matchref = shift;
@@ -248,22 +224,23 @@ sub _season_save_file_as {
 #---------------------------------------------------------------------
 # double check we've got a valid game file to save to first...
 sub _season_save_file {
-  my $top = shift;
-  my $gf = shift;
+  my ($self,$file) = @_;
+  my $top = self->{TOP};
+
   my $teamref = shift;
   my $matchref = shift;
   my $standingsref = shift;
   my $seasonref = shift;
 
-  print "save_season_file($gf, .... )\n";
-  if ($gf eq "") {
-    $gf = &_season_save_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
-    if ($gf eq "") {
+  print "save_season_file($file)\n";
+  if ($file eq "") {
+    $file = $self->_season_save_file_as($file);
+    if ($file eq "") {
       # Some sort of error handling here...
     }
   }
   else {
-    &_season_write_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+    $self->_season_write_file($file);
   }	
 }
 
@@ -271,13 +248,9 @@ sub _season_save_file {
 # FIXME - better error handling needed here!
 
 sub _season_write_file {
-  my $gf = shift;
-  my $teamref = shift;
-  my $matchref = shift;
-  my $standingsref = shift;
-  my $seasonref = shift;
+  my ($self,$file) = @_;
 
-  print "write_season_file($gf, .... )\n";
+  print "write_season_file($file, .... )\n";
 
   # We could purge $matches[#]->{DTD} but we unconditionally re-create
   # it on load, so that's ok. 
@@ -289,11 +262,11 @@ sub _season_write_file {
 	       Version => $gf_version,
 	     };
   
-  if (! -e $gf) {
+  if (! -e $file) {
     # FIXME - again error handling...
   }
-  DumpFile($gf,$data);
-  $NeedSave = 0;
+  DumpFile($file,$data);
+  $self->{NeedSave} = 0;
 }
 
 #---------------------------------------------------------------------
