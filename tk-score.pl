@@ -97,7 +97,6 @@ my @teams;
 my $DEBUG;
 my $prog_help;
 my $man;
-my $initialize_season = 0;
 
 # Used to configure DateEntry to ignore certain dates.
 my @blockdates = ();
@@ -1904,7 +1903,6 @@ sub parseopts {
   GetOptions(
 	     'D:i'   => \$DEBUG,
 	     'f=s'   => \$game_file,
-	     'i'     => \$initialize_season,
 	     'h'     => \$prog_help,
 	     'r'     => \$do_report,
 	    ) or pod2usage(2);
@@ -1974,7 +1972,7 @@ if ($game_file && $do_report) {
 }
 
 #---------------------------------------------------------------------
-# MAIN SETUP, turn into a function someday!
+# MAIN
 
 &MainLoop;
 
@@ -1990,7 +1988,6 @@ tk-score [options]
      -D [#]                debugging
      -f <file>             which .tks season file to load
      -h                    this help
-     -i                    initialize a new season.
      -v                    verbose
      
 =head1 OPTIONS
@@ -2041,7 +2038,8 @@ efficient.
 =item Makeup: M
 
 =item Playoff/Makeup: PM, used when we have a three round playoff
-scheme, but might need to reschedule.  =back
+scheme, but might need to reschedule.  
+=back
 
 
 =head1 AUTHOR
