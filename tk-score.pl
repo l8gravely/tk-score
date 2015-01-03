@@ -38,7 +38,6 @@ foreach my $mod ("Tk",
 }
 die "\nPlease install the above modules (from CPAN) to run this program.\n\n" if $count;
 
-
 #---------------------------------------------------------------------
 # Defaults and global variables.  
 #---------------------------------------------------------------------
@@ -185,22 +184,6 @@ my %sched_template =
 	  22 => [ "Playoffs", "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
 	 },
   );
-
-my $match_template = { Week => 0,
-                       Date => '',
-                       Time => '',
-                       Field => '',
-                       Home => 0,
-                       Away => 0,
-                       HomeScore => "",
-                       HomeCoed => 0,
-                       HomePoints => 0,
-                       AwayScore => "",
-                       AwayCoed => 0,
-                       AwayPoints => 0,
-                       Complete => 0,
-		       Type => '',
-                    };
 
 my $playoff_sched = 
   { "Three Weeks, 8 Teams" => 
