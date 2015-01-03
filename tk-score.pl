@@ -1922,51 +1922,6 @@ sub computepoints {
 }
 
 #---------------------------------------------------------------------
-sub mkbuttons {
-  my $top = shift;
-
-  my $buttons = $top->Frame;
-  my $butspace = $buttons->Frame->pack(-side => 'left', 
-				       -fill => 'both',
-				       -expand => 'yes');
-  
-  $butspace = $buttons->Frame->pack(-side => 'left', 
-				    -fill => 'both',
-				    -expand => 'yes');
-  
-  $buttons->Button(-text => 'Quit',-command => sub{ &cleanup_and_exit($top,$game_file)},
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Button(-text => 'Load',-command => sub { &select_season_file($top,$game_file); },
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Button(-text => 'Save',-command => sub { 
-		     &save_curmatch($curdate);
-		     &save_season_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
-		   },
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Button(-text => 'Save As',-command => sub { 
-		     &save_curmatch($curdate);
-		     $game_file = &save_season_file_as($top,$game_file,\@teams,\@matches,\%standings,\%season);
-		   },
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Frame(-width => 5)->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Button(-text => 'Update Standings',-command => sub{ &update_standings($curdate) },
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->Button(-text => 'Make Report',-command => sub{ &make_report($rpt_file,"YYYY-MM-DD") },
-		  )->pack(-side => 'left', -expand =>'yes');
-  
-  $buttons->pack(-side => 'bottom');
-  
-}
-
-#---------------------------------------------------------------------
 sub roster_email_pdf {
   my $team = shift;
 
