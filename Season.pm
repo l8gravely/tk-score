@@ -159,7 +159,7 @@ sub setup_season_menu {
   
   #---------------------------------------------------------------------
   # Season Menu
-  $m_season->command(-label => 'Edit    ', -command => [ \&edit_season, \%season ],);
+  $m_season->command(-label => 'Edit    ', -command => [ \&season_edit, \%season ],);
   $m_season->command(-label => '~Save    ', -command => sub { 
 		       &save_curmatch($curdate);
 		       &save_season_file($top,$game_file,\@teams,\@matches,\%standings,\%season);
@@ -252,6 +252,57 @@ sub setup_season_menu {
     $top->configure(title => $game_file);
     &load_season_file($game_file);
   }
+}
+
+#---------------------------------------------------------------------
+sub teams_view {
+
+}
+
+#---------------------------------------------------------------------
+sub teams_rename {
+
+  my $top = shift;
+  my $ref = shift;
+  my @ts = @$ref;
+
+  print "teams_rename()\n";
+
+  my $win = MainWindow->new();
+  $win->title("Rename Team");
+  $win->configure(-height => 400,
+		  -width => 400,
+		  -background => $default_background,
+		  );
+  $win->optionAdd('*font*', $default_font);
+
+  my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+
+  for(my $i = 0; $i <= $#ts; $i++) {
+    next if (!defined $ts[$i]);
+    $setup_fr->Entry(-textvariable => \$ts[$i], -width => '20')->
+      pack(-side => 'top');
+  }
+  $setup_fr->pack(-side => 'top', -fill => 'x');
+
+  my $but_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+  my $done_but = $but_fr->Button(-text => "Done", -command => [ $win => 'destroy' ]);
+  my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
+
+  # Spacer frames
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $done_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $cancel_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+
+  $but_fr->pack(-side => 'top', -fill => 'x');
+}
+
+
+#---------------------------------------------------------------------
+sub season_edit {
+  
 }
 
 #---------------------------------------------------------------------
