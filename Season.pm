@@ -54,7 +54,7 @@ sub season_close {
 # place to hang off the main $season blessed variable which holds all
 # the pointers to data and such we need.
 
-sub setup_season_menu {
+sub season_open {
   my $top = MainWindow->new(-class => 'TkScore');
   $top->configure(-title => "No game file loaded",
 		  -height => 400,
@@ -169,55 +169,9 @@ sub setup_season_menu {
   
   if ($game_file ne "") {
     $top->configure(title => $game_file);
-    &load_season_file($game_file);
+    &season_load_file($game_file);
   }
 }
-
-#---------------------------------------------------------------------
-sub teams_view {
-
-}
-
-#---------------------------------------------------------------------
-sub teams_rename {
-
-  my $top = shift;
-  my $ref = shift;
-  my @ts = @$ref;
-
-  print "teams_rename()\n";
-
-  my $win = MainWindow->new();
-  $win->title("Rename Team");
-  $win->configure(-height => 400,
-		  -width => 400,
-		  -background => $default_background,
-		  );
-  $win->optionAdd('*font*', $default_font);
-
-  my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
-
-  for(my $i = 0; $i <= $#ts; $i++) {
-    next if (!defined $ts[$i]);
-    $setup_fr->Entry(-textvariable => \$ts[$i], -width => '20')->
-      pack(-side => 'top');
-  }
-  $setup_fr->pack(-side => 'top', -fill => 'x');
-
-  my $but_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
-  my $done_but = $but_fr->Button(-text => "Done", -command => [ $win => 'destroy' ]);
-  my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
-
-  # Spacer frames
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $done_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $cancel_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-
-  $but_fr->pack(-side => 'top', -fill => 'x');
-}
-
 
 #---------------------------------------------------------------------
 sub season_edit {
@@ -225,7 +179,7 @@ sub season_edit {
 }
 
 #---------------------------------------------------------------------
-sub select_season_file {
+sub season_open {
   my $top = shift;
   my $file = shift;
 
@@ -425,9 +379,59 @@ sub load_season_file {
 }
 
 #---------------------------------------------------------------------
+# Routines for TEAMs
+#---------------------------------------------------------------------
+
+#---------------------------------------------------------------------
+sub teams_view {
+
+}
+
+#---------------------------------------------------------------------
+sub teams_rename {
+
+  my $top = shift;
+  my $ref = shift;
+  my @ts = @$ref;
+
+  print "teams_rename()\n";
+
+  my $win = MainWindow->new();
+  $win->title("Rename Team");
+  $win->configure(-height => 400,
+		  -width => 400,
+		  -background => $default_background,
+		  );
+  $win->optionAdd('*font*', $default_font);
+
+  my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+
+  for(my $i = 0; $i <= $#ts; $i++) {
+    next if (!defined $ts[$i]);
+    $setup_fr->Entry(-textvariable => \$ts[$i], -width => '20')->
+      pack(-side => 'top');
+  }
+  $setup_fr->pack(-side => 'top', -fill => 'x');
+
+  my $but_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
+  my $done_but = $but_fr->Button(-text => "Done", -command => [ $win => 'destroy' ]);
+  my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
+
+  # Spacer frames
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $done_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+  $cancel_but->pack(-side => 'left', -fill => 'x');
+  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
+
+  $but_fr->pack(-side => 'top', -fill => 'x');
+}
+
+
+#---------------------------------------------------------------------
 # Report generation routines.
 #---------------------------------------------------------------------
-sub rpt_results {
+sub _rpt_results {
   my $date = shift;
   my $fh = shift;
   
@@ -471,7 +475,7 @@ format RESULTS =
 }
 
 #---------------------------------------------------------------------
-sub rpt_standings {
+sub _rpt_standings {
   my $date = shift;
   my $fh = shift;
 
@@ -520,7 +524,7 @@ format STANDINGS =
 }
 
 #---------------------------------------------------------------------
-sub rpt_penalties {
+sub _rpt_penalties {
   my $curweek = shift;
   my $fh = shift;
 
@@ -540,7 +544,7 @@ sub rpt_penalties {
 }
 
 #---------------------------------------------------------------------
-sub rpt_notes {
+sub _rpt_notes {
   my $fh = shift;
 
   print " mk_notes(FH)\n";
@@ -553,7 +557,7 @@ sub rpt_notes {
 #---------------------------------------------------------------------
 # TODO - fix game start time in reports, use $curdate instead of $curweek.
 
-sub rpt_schedule {
+sub _rpt_schedule {
   my $date = shift;
   my $fh = shift;
 
@@ -626,7 +630,7 @@ format LINING =
 }
 
 #---------------------------------------------------------------------
-sub rpt_key {
+sub _rpt_key {
   my $fh = shift;
 
   print $fh "\n";
@@ -679,13 +683,13 @@ sub report_generate {
     warn "Error writing week $curweek report to $file: $!\n";
   }  
   else {
-    &rpt_results($curdate,\*RPT);
-    &rpt_standings($curdate,\*RPT);
+    &_rpt_results($curdate,\*RPT);
+    &_rpt_standings($curdate,\*RPT);
     # TODO
-    # &rpt_penalties($curdate,\*RPT);
-    &rpt_notes(\*RPT);
-    &rpt_schedule_rpt($curdate,\*RPT);
-    &rpt_key(\*RPT);
+    # &_rpt_penalties($curdate,\*RPT);
+    &_rpt_notes(\*RPT);
+    &_rpt_schedule_rpt($curdate,\*RPT);
+    &_rpt_key(\*RPT);
     close RPT;
     
     print "\nWrote game report to: $file\n";

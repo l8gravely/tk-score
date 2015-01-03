@@ -1920,10 +1920,10 @@ sub setup_master_menu {
   #---------------------------------------------------------------------
   # Season Menu
   $m_season->command(-label => '~New     ', -command => sub { 
-		       &init_new_season($top); },
+		       &season_new($top); },
 		    );
   $m_season->command(-label => '~Open    ', -command => sub {
-		       &select_season_file($top,$game_file);
+		       &season_open($top,$game_file);
 		     },
 		    );
   $m_season->separator();
