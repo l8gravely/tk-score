@@ -2336,6 +2336,49 @@ if ($game_file && $do_report) {
 # MAIN SETUP, turn into a function someday!
 
 
+
+<<<<<<< HEAD
+#---------------------------------------------------------------------
+my $top = MainWindow->new(-class => 'TkScore');
+$top->configure(-title => "No game file loaded",
+                -height => 200,
+                -width => 400,
+               );
+$top->geometry('-300-300');
+
+# Default font.  
+$top->optionAdd('*font', $default_font);
+
+# Use this to set default colors.  
+$top->optionAdd('*TkScore*background', '#F0F0F0');
+
+# Menu Bar of commands
+my $mbar=$top->Menu();
+$top->configure(-menu => $mbar);
+my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
+my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
+
+#---------------------------------------------------------------------
+# Season Menu
+$m_season->command(-label => '~New     ', -command => sub { 
+		     &init_new_season($top); },
+		  );
+$m_season->command(-label => '~Open    ', -command => sub {
+		     &select_season_file($top,$game_file);
+		   },
+		  );
+$m_season->separator();
+$m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($top,$game_file)},
+  );
+
+#---------------------------------------------------------------------
+# Help Menu
+$m_help->command(-label => 'Version');
+$m_help->separator;
+$m_help->command(-label => 'About');
+
+# Scores are up top, Week display and standings below, side by side.
+
 &MainLoop;
 
 
