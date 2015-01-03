@@ -505,5 +505,273 @@ sub load_season_file {
   return 0;
 }
 
+#---------------------------------------------------------------------
+# Report generation routines.
+#---------------------------------------------------------------------
+sub rpt_results {
+  my $date = shift;
+  my $fh = shift;
+  
+  print " mk_results_rpt($date,FH)\n";
+
+  my $week = &date2week($date);
+  my ($h, $hc, $hs);
+  my ($a, $ac, $as);
+
+  my $ws = "$week ($date)";
+
+  $^L = "";   # Turn off outputting formfeed when we get to a new page.
+format RESULTS_TOP =
+
+  Results:  Week @<<<<<<<<<<<<<<<<<<<<<<<
+                 $ws
+
+.
+
+format RESULTS =
+      @<<<<<<<<<<<<<<<<<  @>  @<<<   vs  @<<<<<<<<<<<<<<<<<  @>  @<<<
+          $h,                 $hs,$hc,       $a,                 $as,$ac
+.
+  
+
+  $fh->format_name("RESULTS");
+  $fh->format_top_name("RESULTS_TOP");
+  $fh->autoflush(1);
+  $fh->format_lines_left(0);
+
+  for (my $i=1; $i <= $matches_per_week; $i++) {
+    $h = $curmatch{$i}->{"HomeName"} . ":";
+    $hs = $curmatch{$i}->{"HomeScore"};
+    $hc = $curmatch{$i}->{"HomeCoed"} ? "(C)" : "(no)";
+    
+    $a = $curmatch{$i}->{"AwayName"} . ":";
+    $as = $curmatch{$i}->{"AwayScore"};
+    $ac = $curmatch{$i}->{"AwayCoed"} ? "(C)" : "(no)";
+    write $fh;
+  }
+}
+
+#---------------------------------------------------------------------
+sub rpt_standings {
+  my $date = shift;
+  my $fh = shift;
+
+  print " mk_standings_rpt($date,FH)\n";
+
+  my ($n, $team, $w, $t, $l, $f, $c, $gf, $ga, $pen, $pts, $d);
+  my $week = &date2week($date);
+
+  $d = "$week ($date)";
+
+format STANDINGS_TOP =
+
+  Standings after Week @<<<<<<<<<<<<<<<<
+                       $d                       
+
+      # Team               W   T   L   F   C   GF   GA  P  Pts
+      - ----------------- --- --- --- --- --- ---  --- --  ---
+.
+
+format STANDINGS =
+      @ @<<<<<<<<<<<<<<<< @>> @>> @>> @>> @>> @>>  @>> @>  @>>
+    $n,$team,           $w, $t, $l, $f, $c, $gf, $ga, $pen, $pts
+.
+
+  $fh->format_name("STANDINGS");
+  $fh->format_top_name("STANDINGS_TOP");
+  $fh->autoflush(1);
+  $fh->format_lines_left(0);
+
+  &update_standings($date);
+  for (my $i = 1; $i <= $numteams; $i++) {
+        $n    = $standings{$i}->{TEAMNUM};
+        $team = $standings{$i}->{TEAM};
+        $w    = $standings{$i}->{W};
+        $t    = $standings{$i}->{T};
+        $l    = $standings{$i}->{L};
+        $f    = $standings{$i}->{F};
+        $c    = $standings{$i}->{C};
+        $gf   = $standings{$i}->{GF};
+        $ga   = $standings{$i}->{GA};
+	$pen  = $standings{$i}->{PCNT} || 0;
+        $pts  = $standings{$i}->{PTS};
+
+        write $fh;
+  }  
+}
+
+#---------------------------------------------------------------------
+sub rpt_penalties {
+  my $curweek = shift;
+  my $fh = shift;
+
+  print " mk_penalties($week,FH)\n";
+
+  # Take hash of penalties per-team and convert into a date/team
+  # sorted list.
+  my @penalties;
+
+  foreach my $m (sort bydatetimefield @matches) {
+	my $matchweek = $m->{"Week"};
+	if ($matchweek <= $curweek) {
+	  
+	}
+  }
+
+}
+
+#---------------------------------------------------------------------
+sub rpt_notes {
+  my $fh = shift;
+
+  print " mk_notes(FH)\n";
+
+  print $fh "\n\n";
+  print $fh "  Notes:\n";
+  print $fh "\n\n";
+}
+
+#---------------------------------------------------------------------
+# TODO - fix game start time in reports, use $curdate instead of $curweek.
+
+sub rpt_schedule {
+  my $date = shift;
+  my $fh = shift;
+
+  print " mk_schedule_rpt($date,<FH>)\n";
+
+  my ($time, $field, $home,$away);
+
+  my $week = &date2week($curdate);
+  print "  Weekdate = $date ($week)\n";
+
+  my $nextweekdate = &get_next_match_date($date);
+  my $nextweek = &date2week($nextweekdate);
+  print "  Next date = $nextweekdate ($nextweek)\n";
+
+  # TODO: Fix lookup of who is lining (if any) fields
+  my $line_this_week = $lining_team{$week} || "<unknown>";
+  my $line_next_week = $lining_team{$nextweek} || "<unknown>";
+
+format SCHEDULE_TOP = 
+
+  Schedule: @<<<<<<<<<<<<<<
+             $nextweekdate
+
+      Time    Field      Home                   Away
+      ------  -------    ------------------     ------------------
+.
+
+format SCHEDULE =
+      @<<<<<  @<<<<<<    @<<<<<<<<<<<<<<<<<     @<<<<<<<<<<<<<<<<<
+      $time,  $field,    $home,                 $away
+.
+
+  $fh->format_name("SCHEDULE");
+  $fh->format_top_name("SCHEDULE_TOP");
+  $fh->autoflush(1);
+  $fh->format_lines_left(0);
+
+  # Should not print anything if $nextweekdate is ""
+  foreach my $m (sort bydatetimefield @matches) {
+    if ($m->{"Date"} eq $nextweekdate) {
+      $time = $m->{"Time"};
+      $field = $m->{"Field"};
+      $home = $teams[$m->{"Home"}];
+      $away = $teams[$m->{"Away"}];
+      write $fh;
+    }
+  }
+
+format LINING_TOP =
+.
+
+format LINING =
+
+  Lining:  @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           $line_this_week;
+           @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+           $line_next_week;
+
+
+.
+
+  if ($dolining) {
+    print "Showing Lining in report...\n";
+    $fh->format_name("LINING");
+    $fh->format_top_name("LINING_TOP");
+    $fh->autoflush(1);
+    $fh->format_lines_left(0);
+    write $fh;
+  }
+}
+
+#---------------------------------------------------------------------
+sub rpt_key {
+  my $fh = shift;
+
+  print $fh "\n";
+  print $fh "Key\n";
+  print $fh "------------\n";
+  print $fh "#  - Team Number on Schedule\n";
+  print $fh "W  - Wins\n";
+  print $fh "T  - Ties\n";
+  print $fh "L  - Losses\n";
+  print $fh "C  - Coed Games\n";
+  print $fh "Fo - Forfeits\n";
+  print $fh "GF - Points For\n";
+  print $fh "GA - Points Against\n";
+  print $fh "Pts - Points for Standings\n";
+  print $fh "\n";
+  print $fh "See rules for how standings are calculated.\n";
+  print $fh "\n";
+
+}
+
+#---------------------------------------------------------------------
+# Make the weekly report, save it to a base file name passed in,
+# adding in the date of week in YYYY-MM-DD format, or week-##
+# depending on how called.
+
+sub report_generate {
+  my $base_rpt_file = shift;
+  my $ext = shift;
+
+  print "report_generate($base_rpt_file , $ext)\n";
+
+  # Strip off .rpt if it exists.
+  $base_rpt_file =~ s/\.rpt$//;
+
+  my $week_date;
+  my $file = "$base_rpt_file";
+  if ($ext eq "YYYY-MM-DD") {
+    my ($m,$d,$y) = split('/',$curdate);
+    $file = $base_rpt_file . "-". sprintf("%04s-%02s-%02s",$y,$m,$d);
+    print "  ext = YYYY-MM-DD, file = $file\n";
+  }
+  elsif ($ext eq "WEEK-##") {
+    $file = "$base_rpt_file". "-$curweek";
+    print "  ext = WEEK-##, file = $file\n";
+  }
+  
+  $file .= ".rpt";
+  
+  if (!open(RPT, ">$file")) {
+    warn "Error writing week $curweek report to $file: $!\n";
+  }  
+  else {
+    &rpt_results($curdate,\*RPT);
+    &rpt_standings($curdate,\*RPT);
+    # TODO
+    # &rpt_penalties($curdate,\*RPT);
+    &rpt_notes(\*RPT);
+    &rpt_schedule_rpt($curdate,\*RPT);
+    &rpt_key(\*RPT);
+    close RPT;
+    
+    print "\nWrote game report to: $file\n";
+  }
+}
+
 
 1;
