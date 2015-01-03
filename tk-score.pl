@@ -233,7 +233,9 @@ my %season;
 #---------------------------------------------------------------------
 sub cleanup_and_exit {
   my $top = shift;
-  my $game_file = shift;
+
+  # We need to find and loop through all the open Season(s) we might
+  # have and make sure they are saved before we exit.  FIXME!
 
   if ($NeedSave) {
     print "We gotta save first dude!\n\n";
@@ -659,237 +661,6 @@ sub teams_rename {
 
 
 #---------------------------------------------------------------------
-sub init_new_season {
-  my $top = shift;
-  
-  my $tmf;  # Temp Frame
-
-  print "init_new_season()\n";
-
-  my $game_per_week = 4;
-  my $playoff_cnt = $playoff_rnds[0];
-  my $first_match_scrimmage = 0;
-  my $teams_line_fields = 0;
-  my $schedule_makeup = 1;
-  my $start_date = "";
-  my $descrip = "";
-
-  # Reset to nothing, since it's a new season.
-  $game_file = "";
-
-  my $win = MainWindow->new();
-  $win->title("Setup a new Season");
-  $win->configure(-height => 400,
-                  -width => 800,
-                  -background => $default_background,
-		 );
-  $win->geometry('-500-500');
-  $win->optionAdd('*font', $default_font);
-  
-  my $t;
-  
-  my $top_fr = $win->Frame();
-  $top_fr->pack(-fill => 'both');
-
-  my $setup_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  my $team_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  my $sched_fr = $top_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  
-  $setup_fr->pack(-side => 'left', -fill => 'y');
-  $team_fr->pack(-side => 'left', -fill => 'y');
-  $sched_fr->pack(-side => 'right', -fill => 'y');
-  
-  my $opt_fr = $setup_fr->Frame(-borderwidth => 0, -width => 40, -relief => 'solid');
-  my $opt_left_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
-  my $opt_middle_fr = $opt_fr->Frame(-borderwidth => 0, -width => 60, -relief => 'solid');
-  my $opt_right_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
-  
-  $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  $t->Label(-text => 'Season Description:')->pack(-side => 'left');
-  $t->Entry(-textvariable => \$descrip, -width => 40)->pack(-side => 'left', -fill => 'x');
-  $t->pack(-side => 'top', -fill => 'x');
-  
-  $opt_fr->pack(-side => 'top', -fill => 'x');
-  $opt_left_fr->BrowseEntry(-label => 'Num Teams',
-			    -variable => \$numteams,
-			    -width => 3,
-			    -choices => \@teamcnt,
-			   )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_right_fr->BrowseEntry(-label => 'Playoff Rounds',
-			     -variable => \$playoff_cnt,
-			     -width => 3,
-			     -choices => \@playoff_rnds,
-			    )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_left_fr->BrowseEntry(-label => 'Games per Week',
-			    -variable => \$game_per_week,
-			    -width => 3,
-			    -choices => \@games_per_week,
-			   )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_right_fr->Checkbutton(-variable => \$first_match_scrimmage,
-			     -text => "First Match for Scrimmage? ",
-			    )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_left_fr->Checkbutton(-variable => \$teams_line_fields,
-			    -text => "Teams Line Fields?",
-			   )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_right_fr->Checkbutton(-variable => \$schedule_makeup,
-			     -text => "Schedule a makeup Week?",
-			    )->pack(-side => 'top', -fill => 'x');
-  
-  $opt_left_fr->pack(-side => 'left', -fill => 'x');
-  $opt_middle_fr->pack(-side => 'left', -fill => 'x');
-  $opt_right_fr->pack(-side => 'left', -fill => 'x');
-  
-  $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  $t->Label(-text => 'Start Date:')->pack(-side => 'left');
-  $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');
-  $t->pack(-side => 'top', -fill => 'x');
-  
-  my %time_fields;
-  my @times_fields;
-  my $time;
-  my $field;
-  
-  #---------------------
-  $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
-
-  $tmf->Label(-text => 'Time:')->pack(-side => 'left');
-  $tmf->Entry(-textvariable => \$time)->pack(-side => 'left');
-  
-  $tmf->Label(-text => 'Field:')->pack(-side => 'left');
-  $tmf->Entry(-textvariable => \$field)->pack(-side => 'left');
-  
-  # Create the listbox first, even though the add button gets packed
-  # above it within the temp_middle_frame (tmf).  
-  
-  my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
-					  -height => 3, -selectmode => "single",
-					  -width => 30, -heigh => 5)->pack(-fill => 'x');
-  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
-  $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
-  $time_field_lb->columnWidth(0,-char => 15);
-  $time_field_lb->header('create', 1, -itemtype => 'text', -text => 'Field');
-  $time_field_lb->columnWidth(1,-char => 15);
-  
-  my $dfadd_b = $tmf->Button(-text => 'Add',-command => sub {
-			       if ($time ne '' && $field ne '') {
-				 # Creates new child at end
-				 my $e = $time_field_lb->addchild("");
-				 $time_field_lb->itemCreate($e,0,-itemtype => 'text', -text => $time, -style => $dls_blue);
-				 $time_field_lb->itemCreate($e,1,-itemtype => 'text', -text => $field, -style => $dls_blue);
-				 $time = '';
-				 $field = '';
-
-			    } }
-			 )->pack(-side => 'left');
-  
-  my $dfdel_b = $tmf->Button(-text => 'Delete Time/Field',-command => sub
-			     { $time_field_lb->delete('entry',$time_field_lb->info('selection')) 
-				 if $time_field_lb->info('selection');
-			       $time = ''; 
-			       $field = '';
-			     }
-			    );
-  
-  
-  $dfadd_b->pack(-side => 'left', -fill => 'x');
-  $dfdel_b->pack(-side => 'bottom', -fill => 'x');
-  $tmf->pack(-side => 'top', -fill => 'x');
-  
-
-  #---------------------
-  # Holidays Frame and buttons
-  my %hols;
-  my $holiday;
-
-  $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
-  $tmf->Label(-text => 'Holiday(s):')->pack(-side => 'left');
-  $tmf->DateEntry(-textvariable => \$holiday)->pack(-side => 'left');
-  
-  # Create the listbox first, even though the add button gets packed
-  # above it within the temp_middle_frame (tmf).  
-  
-  my $holiday_lb = $setup_fr->Scrolled("Listbox", -scrollbars => "e",
-				   -height => 3, -selectmode => "single");
-  
-  my $hfadd_b = $tmf->Button(-text => 'Add',-command => sub {
-			       if ($holiday ne '') {
-				 $holiday_lb->insert('end',$holiday);
-				 $holiday = '';
-			       } }
-			    );
-  $hfadd_b->pack(-side => 'left', -fill => 'x');
-  
-  my $hfdel_b = $setup_fr->Button(-text => 'Delete Holiday',-command => sub
-				  { $holiday_lb->delete($holiday_lb->curselection) if $holiday_lb->curselection;
-				    $holiday = ''; }
-			   );
-  
-  $tmf->pack(-side => 'top', -fill => 'x');
-  $holiday_lb->pack(-side => 'top', -fill => 'x');
-  $hfdel_b->pack(-side => 'bottom', -fill => 'x');
-  
-  #---------------------
-  # Right Frame: Teams
-  my @teams_temp;
-  my @entries;
-  $team_fr->Label(-text => 'Team Names:')->pack(-side => 'top');
-  for (my $i=1; $i <= $max_numteams; $i++) {
-    my $f = $team_fr->Frame();
-    $f->Label(-text => " $i ", -width => 6)->pack(-side => 'left');
-    push @entries, $f->Entry(-textvariable => \$teams_temp[$i], 
-			     -width => 25,
-			    )->pack(-side => 'left');
-    $f->pack(-side => 'top', -fill => 'x');
-
-    # Fill in temp names
-    $teams_temp[$i] = $initial_team_names[$i];
-  }
-  
-  # Let's me be lazy and enter team names, then randomize them.
-  my $rand_but = $team_fr->Button(-text => 'Randomize Teams', 
-				  -command => [ \&randomize_teams, \@entries ],
-				 );
-  $rand_but->pack(-side => 'bottom', -fill => 'x');
-
-  # Buttons at bottom of frame, one for Quit, one to Generate, one to
-  # Accept proposed season.  Idea is that you can "Generate a schedule
-  # multiple times, but only accept it once.  FIXME: Done needs work.
-  
-  my $but_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
-  
-  my $cancel_but = $but_fr->Button(-text => "Cancel", -command => [ $win => 'destroy' ]);
-  my $done_but = $but_fr->Button(-text => "Done", -state => 'disabled',
-				 -command => [ \&accept_schedule, $top, $win, $descrip ]
-				);
-  
-  my $gen_but = $but_fr->Button(-text => "Generate Schedule", 
-				-command =>  [
-					      \&generate_schedule, $win, \$numteams,
-					      \@entries, \$descrip, \$start_date,
-					      \$time_field_lb, \$playoff_cnt, \$first_match_scrimmage,
-					      \$teams_line_fields, \$schedule_makeup, \$holiday_lb, 
-					      \$done_but ] 
-			       );
-  
-  # add in spacers...
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $cancel_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $gen_but->pack(-side => 'left', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'left', -expand => 1);
-  $done_but->pack(-side => 'right', -fill => 'x');
-  $but_fr->Frame(-borderwidth => 0, -relief => 'flat')->pack(-side => 'right', -expand => 1);
-  
-  # Pack entire frame  of buttons...
-  $but_fr->pack(-side => 'bottom', -fill => 'x');
-}
-
-#---------------------------------------------------------------------
 # Takes current date, returns date of NEXT match, or "" if none.
 
 sub get_next_match_date {
@@ -1196,32 +967,6 @@ sub update_standings {
     $standings{$x}->{TEAMNUM} = $idx;
     $standings{$x}->{TEAM} = $teams[$idx];
     $x++;
-  }
-}
-
-#---------------------------------------------------------------------
-# Save the current info in %curmatch back to the @match array.
-sub save_curmatch {
-  my $date = shift;
-  
-  print "save_curmatch($date)\n";
-
-  # Save current week data....
-  my $idx = 1;
-  foreach my $m (sort bydatetimefield @matches) {
-    if ($m->{"Date"} eq "$date") {
-      $m->{"HomePoints"} = $curmatch{$idx}->{"HomePoints"};
-      $m->{"HomeScore"} = $curmatch{$idx}->{"HomeScore"};
-      $m->{"HomeCoed"} = $curmatch{$idx}->{"HomeCoed"};
-      #$curmatch{$idx}->{HomeScore} = "";
-      
-      $m->{"AwayPoints"} = $curmatch{$idx}->{"AwayPoints"};
-      $m->{"AwayScore"} = $curmatch{$idx}->{"AwayScore"};
-      $m->{"AwayCoed"} = $curmatch{$idx}->{"AwayCoed"};
-      
-      $m->{"Complete"} = $curmatch{$idx}->{"Complete"};
-      $idx++;
-    }
   }
 }
 
@@ -1632,15 +1377,18 @@ sub setup_master_menu {
   #---------------------------------------------------------------------
   # Season Menu
   $m_season->command(-label => '~New     ', -command => sub { 
-		       &season_new($top); },
+		       my $season = Season->new();
+		       $season->season_create();
+		     },
 		    );
   $m_season->command(-label => '~Open    ', -command => sub {
-		       &season_open($top,$game_file);
+		       my $season = Season->new();
+		       $season->season_open($game_file);
 		     },
 		    );
   $m_season->separator();
   $m_season->command(-label => '~Quit    ', -command => sub{ 
-		       &cleanup_and_exit($top,$game_file)},
+		       &cleanup_and_exit($top)},
 		    );
 
   return $top;
