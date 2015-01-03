@@ -692,5 +692,21 @@ sub report_generate {
   }
 }
 
+#---------------------------------------------------------------------
+sub schedule_view {
+	
+  print "schedule_view()\n";
+  
+    foreach my $m (sort bydatetimefield @matches) {
+      my $week = $m->{"Week"};
+      my $weekdate = &week2date($week);
+      my $time = $m->{"Time"};
+      my $field = $m->{"Field"};
+      my $home = $teams[$m->{"Home"}];
+      my $away = $teams[$m->{"Away"}];
+      printf("%2d %14s  %3s  %7s    %-20s - %20s\n",$week, $weekdate, $time, $field, $home, $away);
+    }
+}
+
 
 1;
