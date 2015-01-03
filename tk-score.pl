@@ -273,7 +273,7 @@ sub cleanup_and_exit {
 
 #---------------------------------------------------------------------
 sub do_exit {
-
+  
   foreach my $top (@_) {
     $top->destroy;
   }
@@ -284,24 +284,25 @@ sub do_exit {
 # Crying out to be object oriented.  Used by display widgets to enter
 # weekly results.  
 sub init_matches_per_week {
-
+  
   # Matches per-week that are played.
   my $num = shift @_;
-
+  
   my %t;
-
+  
   for (my $m=1; $m <= $num; $m++) {
-	$t{$m}->{HomeScore} = "";
-	$t{$m}->{HomeCoed} = 0;
-	$t{$m}->{HomePoints} = "";
-	$t{$m}->{AwayScore} = "";
-	$t{$m}->{AwayCoed} = 0;
-	$t{$m}->{AwayPoints} = "";
-	$t{$m}->{PointsLabels} = ();
-	$t{$m}->{Type} = "G";
+    $t{$m}->{HomeScore} = "";
+    $t{$m}->{HomeCoed} = 0;
+    $t{$m}->{HomePoints} = "";
+    $t{$m}->{AwayScore} = "";
+    $t{$m}->{AwayCoed} = 0;
+    $t{$m}->{AwayPoints} = "";
+    $t{$m}->{PointsLabels} = ();
+    $t{$m}->{Type} = "G";
   }
   return %t;
 }
+
 #---------------------------------------------------------------------
 # Decodes a date and returns the number of days from Jan 1, 1970.
 sub my_dtd {
@@ -318,18 +319,18 @@ sub my_dtd {
 sub byweektimefield {
   $a->{Week} <=> $b->{Week} ||
     $a->{Time} cmp $b->{Time} ||
-        $a->{Field} cmp $b->{Field};
+      $a->{Field} cmp $b->{Field};
 }
 
 #---------------------------------------------------------------------
 # sort matches by date then time then field
 
 sub bydatetimefield {
-
+  
   $a <=> $b ||
-  $a->{DTD} <=> $b->{DTD} ||
-  $a->{Time} cmp $b->{Time} ||
-  $a->{Field} cmp $b->{Field};
+    $a->{DTD} <=> $b->{DTD} ||
+      $a->{Time} cmp $b->{Time} ||
+	$a->{Field} cmp $b->{Field};
 }
 
 #---------------------------------------------------------------------
@@ -340,7 +341,7 @@ sub updateweekdates {
   my $new = shift;
   
   print "updateweekdates($week, \"$old\",\"$new\")\n";
-
+  
   # check for bogus inputs
   if ($new eq "" and $old eq "") {
     return 0;
@@ -367,7 +368,7 @@ sub updateweekdates {
 
 sub week2date {
   my $w = shift;
-
+  
   foreach my $match (sort bydatetimefield @matches) {
     if ($match->{"Week"} == $w) {
       my $d = $match->{Date};
@@ -384,7 +385,7 @@ sub week2date {
 
 sub date2week {
   my $d = shift;
-
+  
   foreach my $match (sort bydatetimefield @matches) {
     if ($match->{"Date"} eq $d) {
       my $w = $match->{Week};
@@ -403,7 +404,7 @@ sub date2week {
 
 sub dateentry_cfg {
   my(%args) = @_;
-
+  
   if ($args{-date}) {
     my($day,$month,$year) = @{ $args{-date} };
     my $dw = $args{-datewidget};
@@ -424,14 +425,14 @@ sub match_reschedule {
   my $old_date = shift;
   
   my $week = &date2week($old_date);
-
+  
   print "match_reschedule($old_date)\n";
   
   # Update the blockdates before we reschedule.
   foreach my $i (&get_match_dates) { 
     push @blockdates, $i->[1];
   }
-
+  
   my $new_date = "";
   
   my $dialog = $top->DialogBox(-title => "Reschedule Match Date",
@@ -442,7 +443,7 @@ sub match_reschedule {
   $dialog->add('DateEntry', -textvariable => \$new_date, 
 	       -width => 12,
 	       -configcmd => \&dateentry_cfg)->pack(-side => 'left');
-
+  
   my $ok = 1;
   while ($ok) {
     my $answer = $dialog->Show( );
@@ -451,7 +452,7 @@ sub match_reschedule {
       print "New Date = $new_date\n";
       if ($new_date =~ m/^\d\d\/\d\d\/\d\d\d\d$/) {
         $ok--;
-
+	
 	# Gotta be careful here... don't allow matches on an existing
 	# date!  Or at least also use week number to keep them sane...
 	# BUT!  We can allow them on Makeup days or Makeup/Playoff days.
@@ -481,7 +482,7 @@ sub error_msg {
   my $msg = shift;
 
   print "MSG: $msg\n";
-   
+  
 }
 
 #---------------------------------------------------------------------
@@ -570,9 +571,9 @@ sub randomize_teams {
 
   my @entry = @$ref;
   my @h;
-
+  
   print "randomize_teams( ... )\n" if $DEBUG;
-
+  
   foreach my $e (@entry) {
     my $g = $e->get;
     push @h, $g unless $g eq "";
@@ -784,7 +785,7 @@ sub generate_schedule {
 	  $lining_team{$week} = "tbd";
 	}
       }
-
+      
       # If we have an odd number of teams, there will be a bye once a
       # week for some team, otherwise empty.
 
@@ -884,7 +885,7 @@ sub add_holiday {
   my $holsref = shift;
   my $holref = shift;
   my $hlb = shift;
-
+  
   print "add_holiday()\n";
   
   my %hols = %$holsref;
@@ -902,11 +903,6 @@ sub del_holiday {
 
   print "del_holiday()\n";
 
-
-}
-
-#---------------------------------------------------------------------
-sub teams_view {
 
 }
 
@@ -952,15 +948,9 @@ sub teams_rename {
 
 
 #---------------------------------------------------------------------
-sub edit_season {
-  
-}
-
-#---------------------------------------------------------------------
-
 sub init_new_season {
   my $top = shift;
-
+  
   my $tmf;  # Temp Frame
 
   print "init_new_season()\n";
@@ -981,10 +971,10 @@ sub init_new_season {
   $win->configure(-height => 400,
                   -width => 800,
                   -background => $default_background,
-     );
+		 );
   $win->geometry('-500-500');
   $win->optionAdd('*font', $default_font);
-
+  
   my $t;
   
   my $top_fr = $win->Frame();
@@ -1002,7 +992,7 @@ sub init_new_season {
   my $opt_left_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
   my $opt_middle_fr = $opt_fr->Frame(-borderwidth => 0, -width => 60, -relief => 'solid');
   my $opt_right_fr = $opt_fr->Frame(-borderwidth => 0, -relief => 'solid');
-
+  
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $t->Label(-text => 'Season Description:')->pack(-side => 'left');
   $t->Entry(-textvariable => \$descrip, -width => 40)->pack(-side => 'left', -fill => 'x');
@@ -1010,10 +1000,10 @@ sub init_new_season {
   
   $opt_fr->pack(-side => 'top', -fill => 'x');
   $opt_left_fr->BrowseEntry(-label => 'Num Teams',
-			 -variable => \$numteams,
-			 -width => 3,
-			 -choices => \@teamcnt,
-	)->pack(-side => 'top', -fill => 'x');
+			    -variable => \$numteams,
+			    -width => 3,
+			    -choices => \@teamcnt,
+			   )->pack(-side => 'top', -fill => 'x');
   
   $opt_right_fr->BrowseEntry(-label => 'Playoff Rounds',
 			     -variable => \$playoff_cnt,
@@ -1036,23 +1026,23 @@ sub init_new_season {
 			   )->pack(-side => 'top', -fill => 'x');
   
   $opt_right_fr->Checkbutton(-variable => \$schedule_makeup,
-			      -text => "Schedule a makeup Week?",
-			     )->pack(-side => 'top', -fill => 'x');
+			     -text => "Schedule a makeup Week?",
+			    )->pack(-side => 'top', -fill => 'x');
   
   $opt_left_fr->pack(-side => 'left', -fill => 'x');
   $opt_middle_fr->pack(-side => 'left', -fill => 'x');
   $opt_right_fr->pack(-side => 'left', -fill => 'x');
-
+  
   $t = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
   $t->Label(-text => 'Start Date:')->pack(-side => 'left');
   $t->DateEntry(-textvariable => \$start_date)->pack(-side => 'left');
   $t->pack(-side => 'top', -fill => 'x');
-
+  
   my %time_fields;
   my @times_fields;
   my $time;
   my $field;
-
+  
   #---------------------
   $tmf = $setup_fr->Frame(-borderwidth => 1, -relief => 'solid');
 
@@ -1066,14 +1056,14 @@ sub init_new_season {
   # above it within the temp_middle_frame (tmf).  
   
   my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
-					 -height => 3, -selectmode => "single",
-					 -width => 30, -heigh => 5)->pack(-fill => 'x');
+					  -height => 3, -selectmode => "single",
+					  -width => 30, -heigh => 5)->pack(-fill => 'x');
   $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
   $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
   $time_field_lb->columnWidth(0,-char => 15);
   $time_field_lb->header('create', 1, -itemtype => 'text', -text => 'Field');
   $time_field_lb->columnWidth(1,-char => 15);
-
+  
   my $dfadd_b = $tmf->Button(-text => 'Add',-command => sub {
 			       if ($time ne '' && $field ne '') {
 				 # Creates new child at end
@@ -1093,8 +1083,8 @@ sub init_new_season {
 			       $field = '';
 			     }
 			    );
-
-
+  
+  
   $dfadd_b->pack(-side => 'left', -fill => 'x');
   $dfdel_b->pack(-side => 'bottom', -fill => 'x');
   $tmf->pack(-side => 'top', -fill => 'x');
@@ -1148,7 +1138,7 @@ sub init_new_season {
     # Fill in temp names
     $teams_temp[$i] = $initial_team_names[$i];
   }
-
+  
   # Let's me be lazy and enter team names, then randomize them.
   my $rand_but = $team_fr->Button(-text => 'Randomize Teams', 
 				  -command => [ \&randomize_teams, \@entries ],
@@ -1195,7 +1185,7 @@ sub get_next_match_date {
 
   my $cur_date = shift @_;
   print "get_next_match_date($cur_date) = ";
-
+  
   my $found = 0;
   foreach my $m (sort bydatetimefield @matches) {
     # We will find four matches before we fall through...
@@ -1224,13 +1214,13 @@ sub get_match_dates {
   my @t;
 
   print " get_match_dates()\n";
-
+  
   foreach my $m (@matches) {
     $w = $m->{'Week'};
-
+    
     # FIXME: piss-poor inefficient....
     $wks{$w}{COMP} = &all_matches_complete($w);
-
+    
     $wks{$w}{T} = $m->{'Type'};
     $wks{$w}{D} = $m->{'Date'};
     # Optimize out Date::Calc Date_to_Days calls a bit.
@@ -1276,7 +1266,7 @@ sub update_datelist {
   my $hl = shift;
 
   print "update_datelist()\n";
-
+  
   # Colors.  Wish I could change colors of box borders...
   $dls_red = $hl->ItemStyle('text', -foreground => '#800000', -background => $default_background); 
   $dls_blue = $hl->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
@@ -1306,16 +1296,15 @@ sub update_datelist {
 sub init_datelist {
   my $top = shift;
   print "init_datelist()\n";
-
+  
   my @widths = ( 6, 16, 16, 6);
   my $tw = 0;
   foreach (@widths) {$tw += $_;}
-
+  
   my $hl = $top->Scrolled('HList', -scrollbars => 'ow',
                           -columns=> $#widths+1, -header => 1, 
 			  -height => 15,
 			  -selectmode => 'single', -width => $tw,
-			  
                          )->pack(-fill => 'y'); 
   $hl->configure(-browsecmd => [ \&datelist_browse, $hl ]);
   $hl->header('create', 0, -itemtype => 'text', -text => "Week");
@@ -1376,7 +1365,7 @@ sub init_standings {
     $ff->pack(-side => 'top', -fill => 'x');
   }
   $f->pack(-side => 'top', -fill => 'x');
- }
+}
 
 #---------------------------------------------------------------------
 # Used to both initialize and reset standings when updated.
@@ -1419,7 +1408,7 @@ sub update_standings {
   # Now go through all matches and figure out standings.
   foreach my $m (sort bydatetimefield @matches) {
     my $matchdate = $m->{"Date"};
-
+    
     #print "m->{Type} = ", $m->{"Type"}, "\n";
     if ($m->{"Type"} eq "G" && &my_dtd($matchdate) <= &my_dtd($curdate)) {
       # Do we have full scores recorded for this match yet?
@@ -1761,9 +1750,9 @@ sub chgcolor {
 sub chg_datelist_status {
   my $week = shift;
   my $comp = shift;
-
+  
   print "chg_datelist_status($week,$comp)\n";
-
+  
   my $dls_clear = $match_datelist->ItemStyle('text', -background => $default_background);
   my $dls_comp = $match_datelist->ItemStyle('text', -background => 'lightgreen');
 
@@ -1909,7 +1898,7 @@ sub schedule_view {
 
 #---------------------------------------------------------------------
 sub parseopts {
-
+  
   #&debug("parseopts()\n");
 
   GetOptions(
@@ -1930,8 +1919,8 @@ sub setup_master_menu {
 
   my $top = MainWindow->new(-class => 'TkScore');
   $top->configure(-title => "No game file loaded",
-		  -height => 400,
-		  -width => 1000,
+		  -height => 200,
+		  -width => 400,
 		 );
   $top->geometry('-300-300');
   
@@ -1979,59 +1968,13 @@ my $top = &setup_master_menu;
 
 # Load the game file and generate a report if asked.
 if ($game_file && $do_report) {
-  &load_season_file($top,$game_file);
+  &season_load_file($top,$game_file);
   &make_report();
   &Tk::exit;
 }
 
 #---------------------------------------------------------------------
 # MAIN SETUP, turn into a function someday!
-
-#---------------------------------------------------------------------
-sub main_setup {
-
-  my $top = MainWindow->new(-class => 'TkScore');
-$top->configure(-title => "No game file loaded",
-                -height => 200,
-                -width => 400,
-               );
-$top->geometry('-300-300');
-
-# Default font.  
-$top->optionAdd('*font', $default_font);
-
-# Use this to set default colors.  
-$top->optionAdd('*TkScore*background', '#F0F0F0');
-
-# Menu Bar of commands
-my $mbar=$top->Menu();
-$top->configure(-menu => $mbar);
-my $m_season=$mbar->cascade(-label=>"~Season", -tearoff => 0);
-my $m_help=$mbar->cascade(-label =>"~Help", -tearoff => 0);
-
-#---------------------------------------------------------------------
-# Season Menu
-$m_season->command(-label => '~New     ', -command => sub { 
-		     &init_new_season($top); },
-		  );
-$m_season->command(-label => '~Open    ', -command => sub {
-		     &select_season_file($top,$game_file);
-		   },
-		  );
-$m_season->separator();
-$m_season->command(-label => '~Quit    ', -command => sub{ &cleanup_and_exit($top,$game_file)},
-  );
-
-#---------------------------------------------------------------------
-# Help Menu
-$m_help->command(-label => 'Version');
-$m_help->separator;
-$m_help->command(-label => 'About');
-
-# Scores are up top, Week display and standings below, side by side.
-
-}
-
 
 &MainLoop;
 
