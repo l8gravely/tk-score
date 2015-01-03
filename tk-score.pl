@@ -2062,45 +2062,6 @@ $m_help->command(-label => 'About');
 
 &MainLoop;
 
-
-
-
-#---------------------------------------------------------------------
-# Change Log
-#---------------------------------------------------------------------
-#
-# V 1.5 - 2013-03-03
-#
-# - finally started using a changelog
-# - improved report generation to using game date
-#
-# 2013/04/04 - v1.6
-# - started support for outdoor season
-#   - 9 team schedule, with lining and bye columns
-#   - updated 8 team schedule with empty bye and lining columns
-#   - initial support for PDF format rosters using PDF::API2 and PDF::Table
-#   - updated display for proper column support and report generation.
-#
-# 2013/11/06 - v1.8
-# - initial support for marking which week's are completely scored in datelist.
-#    - some bugs to fix there still
-# - adding in mailing support of reports.
-#
-# 2014/03/10 - v1.9
-# - sort games by date, not week.  
-# - updated all reports to fix updates when games are rescheduled.
-# - things have probably slowed down, oops.
-#
-# 2014/03/17 - v1.10
-# - Add in initial support for game types:
-#   - (S)crimmage, (G)ame, (M)akeup, (P)layoff
-#   - think about how Makeup/Playoff option to be shown and handled.
-#  
-#  - TODO:   get playoffs scheduling working ASAP
-#
-#---------------------------------------------------------------------
-# POD docs... using pod2usage
-
 __END__
 
 =head1 tk-score
