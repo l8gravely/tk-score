@@ -1955,6 +1955,10 @@ if ($game_file && $do_report) {
   &Tk::exit;
 }
 
+if ($game_file) {
+  my $season = Season->new();
+  $season->season_open($game_file);
+}
 #---------------------------------------------------------------------
 # MAIN
 

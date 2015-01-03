@@ -6,11 +6,10 @@ package Season;
 
 sub new {
   my $class = shift;
-  my $top = shift;
 
-  my $mw = MainWindow->new(-class => 'TkScoreSeason');
+  my $top = MainWindow->new(-class => 'TkScoreSeason');
   my $self = {
-	      TOP => $mw,
+	      TOP => $top,
 	      Match_Cur => {},
 	      Matches => [],
 	      Teams => [],
@@ -19,7 +18,7 @@ sub new {
 	      File_Version => "v2.0",
 	     };
 
-  $mw->configure(-title => "Season Window",
+  $top->configure(-title => "Season Window",
 		-height => 400,
 		-width => 1000,
 		);
@@ -54,7 +53,7 @@ sub season_close {
 # place to hang off the main $season blessed variable which holds all
 # the pointers to data and such we need.
 
-sub season_open {
+sub season_win_init {
   my $top = MainWindow->new(-class => 'TkScore');
   $top->configure(-title => "No game file loaded",
 		  -height => 400,
@@ -180,9 +179,9 @@ sub season_edit {
 
 #---------------------------------------------------------------------
 sub season_open {
-  my $top = shift;
-  my $file = shift;
+  my ($self,$file) = @_;
 
+  my $top = $self->{TOP};
   my $fs = $top->FileSelect(
 			    -filter => '*.tks',
 			    -directory => $ENV{'HOME'},
@@ -192,12 +191,12 @@ sub season_open {
   
   my $gf = $fs->Show;
   
-  if (&load_season_file($gf)) {
+  if (&_season_load_file($gf)) {
     # Reset window Title to game_file
     $top->configure(title => $game_file);
   }
   else {
-    print "Error loading.  Look in select_season_file()\n";
+    print "Error loading.  Look in _season_select_file()\n";
   }
 }
   
@@ -205,7 +204,7 @@ sub season_open {
 # Need to check the return value here and NOT exit if we cancel the
 # save. 
 
-sub save_season_file_as {
+sub _season_save_file_as {
   my $top = shift;
   my $gf = shift;
   my $teamref = shift;
@@ -248,7 +247,7 @@ sub save_season_file_as {
 
 #---------------------------------------------------------------------
 # double check we've got a valid game file to save to first...
-sub save_season_file {
+sub _season_save_file {
   my $top = shift;
   my $gf = shift;
   my $teamref = shift;
@@ -258,20 +257,20 @@ sub save_season_file {
 
   print "save_season_file($gf, .... )\n";
   if ($gf eq "") {
-    $gf = &save_season_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
+    $gf = &_season_save_file_as($top,$gf,$teamref,$matchref,$standingsref,$seasonref);
     if ($gf eq "") {
       # Some sort of error handling here...
     }
   }
   else {
-    &write_season_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+    &_season_write_file($gf,$teamref,$matchref,$standingsref,$seasonref);
   }	
 }
 
 #---------------------------------------------------------------------
 # FIXME - better error handling needed here!
 
-sub write_season_file {
+sub _season_write_file {
   my $gf = shift;
   my $teamref = shift;
   my $matchref = shift;
@@ -298,7 +297,7 @@ sub write_season_file {
 }
 
 #---------------------------------------------------------------------
-sub load_season_file {
+sub _season_load_file {
   my $file = shift;
 
   my $matchid = 0;
