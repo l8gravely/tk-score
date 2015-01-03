@@ -25,11 +25,11 @@ use YAML qw(DumpFile LoadFile);
 # Non-core Perl modules we require
 my $count = 0;
 foreach my $mod ("Tk",	
-		"Tk::BrowseEntry", "Tk::DateEntry", "Tk::HList",
-		"Tk::ItemStyle", "Tk::DialogBox", "Tk::Month",
+		 "Tk::BrowseEntry", "Tk::DateEntry", "Tk::HList",
+		 "Tk::ItemStyle", "Tk::DialogBox", "Tk::Month",
 		 "Tk::FileSelect",
 		 "Date::Calc qw(Decode_Date_US Delta_Days Date_to_Days Add_Delta_Days)",
-	) {
+		) {
   eval "use $mod;1";
   if ($@) {
     warn "  Missing: $mod\n";
@@ -37,19 +37,6 @@ foreach my $mod ("Tk",
   }
 }
 die "\nPlease install the above modules (from CPAN) to run this program.\n\n" if $count;
-
-# Nice to have modules for making pretty reports.
-my $have_pdf = 1;
-$count = 0;
-foreach my $mod (qw(PDF::API2 PDF::Table)) {
-  eval "use $mod; 1";
-  if ($@) {
-    warn "  Missing: $mod\n";
-    $count++;
-    $have_pdf = 0;
-  }
-}
-warn "\nPlease install the above modules to generate PDF reports.\n" if $count;
 
 
 #---------------------------------------------------------------------
@@ -2020,7 +2007,7 @@ if ($game_file && $do_report) {
 #---------------------------------------------------------------------
 sub main_setup {
 
-my $top = MainWindow->new(-class => 'TkScore');
+  my $top = MainWindow->new(-class => 'TkScore');
 $top->configure(-title => "No game file loaded",
                 -height => 200,
                 -width => 400,
@@ -2059,6 +2046,9 @@ $m_help->separator;
 $m_help->command(-label => 'About');
 
 # Scores are up top, Week display and standings below, side by side.
+
+}
+
 
 &MainLoop;
 
