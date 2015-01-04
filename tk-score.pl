@@ -27,7 +27,7 @@ my $count = 0;
 foreach my $mod ("Tk",	
 		 "Tk::BrowseEntry", "Tk::DateEntry", "Tk::HList",
 		 "Tk::ItemStyle", "Tk::DialogBox", "Tk::Month",
-		 "Tk::FileSelect",
+		 "Tk::FileSelect", "Tk::FileDialog",
 		 "Date::Calc qw(Decode_Date_US Delta_Days Date_to_Days Add_Delta_Days)",
 		) {
   eval "use $mod;1";
