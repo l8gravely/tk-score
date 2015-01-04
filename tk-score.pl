@@ -117,22 +117,34 @@ my $first_match_scrimmage = 0;
 
 # %sched_template = ( Number_Teams => {
 #                     Week => [game,game,game,game,bye,lining],
-#                     ....
-#                    }
-#                  );    
-
 my %sched_template = 
-  ( 8 => {
-	  0  => [ "1-7", "2-3", "5-8", "4-6", "", "1" ],
-	  1  => [ "1-2", "3-4", "5-6", "7-8", "", "1" ],
-	  2  => [ "5-7", "6-8", "1-3", "2-4", "", "5" ],
-	  3  => [ "4-8", "1-5", "2-6", "3-7", "", "5" ],
-	  4  => [ "2-5", "3-8", "4-7", "1-6", "", "3" ],
-	  5  => [ "3-6", "2-7", "1-8", "4-5", "", "3" ],
-	  6  => [ "1-7", "4-6", "2-8", "3-5", "", "4" ],
-	  7  => [ "4-1", "7-6", "8-5", "3-2", "", "4" ],
-	  8  => [ "8-7", "6-5", "4-3", "2-1", "", "6" ],
-	  9  => [ "4-2", "3-1", "8-6", "7-5", "", "2" ],
+  (
+   6 => {
+	 0  => [ "3-2", "4-6", "1-5", "", "3" ],
+	 1  => [ "2-1", "3-6", "4-5", "", "1" ],
+	 2  => [ "3-4", "2-5", "6-1", "", "5" ],
+	 3  => [ "6-4", "1-5", "2-3", "", "6" ],
+	 4  => [ "4-1", "6-2", "5-3", "", "2" ],
+	 5  => [ "5-6", "1-3", "4-2", "", "4" ],
+	 6  => [ "5-4", "1-2", "6-3", "", "2" ],
+	 7  => [ "5-2", "4-3", "1-6", "", "4" ],
+	 8  => [ "5-1", "6-4", "3-2", "", "6" ],
+	 9  => [ "2-6", "3-5", "1-4", "", "3" ],
+	 10  => [ "3-1", "2-4", "6-5", "", "1" ],
+	 11 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	 12 => [ "Playoffs", "Playoffs", "Playoffs", "", "tbd" ],
+	},
+   8 => {
+	 0  => [ "1-7", "2-3", "5-8", "4-6", "", "1" ],
+	 1  => [ "1-2", "3-4", "5-6", "7-8", "", "1" ],
+	 2  => [ "5-7", "6-8", "1-3", "2-4", "", "5" ],
+	 3  => [ "4-8", "1-5", "2-6", "3-7", "", "5" ],
+	 4  => [ "2-5", "3-8", "4-7", "1-6", "", "3" ],
+	 5  => [ "3-6", "2-7", "1-8", "4-5", "", "3" ],
+	 6  => [ "1-7", "4-6", "2-8", "3-5", "", "4" ],
+	 7  => [ "4-1", "7-6", "8-5", "3-2", "", "4" ],
+	 8  => [ "8-7", "6-5", "4-3", "2-1", "", "6" ],
+	 9  => [ "4-2", "3-1", "8-6", "7-5", "", "2" ],
 	  10 => [ "7-3", "6-2", "5-1", "8-4", "", "7" ],
 	  11 => [ "6-1", "7-4", "8-3", "5-2", "", "7" ],
 	  12 => [ "5-4", "8-1", "7-2", "6-3", "", "8" ],
@@ -197,11 +209,11 @@ my $playoff_sched =
 		    };
 
 # Number of teams supported by schedules.
-my @teamcnt = sort(qw(8 9));
+my @teamcnt = sort(qw(6));
 my $max_numteams = $teamcnt[$#teamcnt];
 my $numteams = $teamcnt[0];
 
-my @playoff_rnds = qw(3 2);
+my @playoff_rnds = qw(3 2 1);
 my @game_times = ("6pm & 7pm", "7pm & 8pm");
 #my $num_playoffs = $playoff_rnds[0];
 
@@ -212,7 +224,7 @@ my $curweek = 0;
 my $curdate = "";
 my $weekdate= "";
 my @weeks;
-my $matches_per_week = 4;
+my $matches_per_week = 3;
 
 # Per-team standings.  Re-calculated depending on the week showing.
 my $cnt = 1;
@@ -1034,15 +1046,16 @@ sub generate_schedule {
       # Note!  Week Schedule assumes two fields and two games on each
       # field, along with a Bye and Lining column. 
 
-      # Since we have SIX columns, pop off the last two, which are for
+      # Since we have FIVE columns, pop off the last two, which are for
       # byes[5] and lining[6].  This is ugly and I should just change
       # the data structure.  TODO
+
+      $is_lining = pop @week_sched;
+      my $has_bye = pop @week_sched;
       
       $lining_team{$week} = "";
       if ($do_lining) {
 	$dolining = 1;
-	$is_lining = pop @week_sched;
-
 	# Numbers are team lining, otherwise skip
 	if ($is_lining =~ m/^\d+$/) {
 	  $lining_team{$week} = $teams[$is_lining];
@@ -1055,7 +1068,6 @@ sub generate_schedule {
       # some team.  
 
       $bye_team{$week} = "" || "tbd";
-      my $has_bye = pop @week_sched;
       if ($has_bye =~ m/^\d+$/) {
 	$bye_team{$week} = $teams[$has_bye];
       }
@@ -1089,6 +1101,10 @@ sub generate_schedule {
 	  $home = "tbd";
 	  $away = "tbd";
 	}
+	# This might fix the extra empty week being created...
+	else {
+	  next;
+	}
 
 	$game->{Date} = $cur_date;
 	$game->{DTD} = &my_dtd($cur_date);
@@ -1105,16 +1121,15 @@ sub generate_schedule {
 	$game->{Complete} = 0;
 	$game->{MatchID} = $matchid++;
 	
-	# Template assumes two games at 6 or 7pm, then two at 7 or
-	# 8pm, using Field 1 then 2, in that order, for a total of
-	# four games. 
+	# We have three games, one at 7pm Field 1, one 8pm Field 1,
+	# and 8pm Field 2.
 	
 	if ($i == 0 || $i == 2) {
 	  $game->{Field} = "Field 1";
 	} else {
 	  $game->{Field} = "Field 2";
 	}
-	if ($i == 0 || $i == 1) {
+	if ($i == 0) {
 	  $game->{Time} = $first_game_time;
 	} else {
 	  $game->{Time} = $second_game_time;
@@ -1763,7 +1778,7 @@ sub update_standings {
   my $date = shift;
 
   my %tmp;
-  print "update_standings($date)\n";
+  #print "update_standings($date)\n";
 
   # Zero out the standings first
   &zero_standings(\%standings);
@@ -1777,6 +1792,11 @@ sub update_standings {
   # Now go through all matches and figure out standings.
   foreach my $m (sort bydatetimefield @matches) {
     my $matchdate = $m->{"Date"};
+
+    # Skip matches without proper Away and Home team numbers.
+    if (!$m->{Home} =~ m/^\d+$/ && !$m->{Away} =~ m/^\d+$/) {
+      next;
+    }
 
     if ($m->{"Type"} eq "G" && &my_dtd($matchdate) <= &my_dtd($curdate)) {
       # Do we have full scores recorded for this match yet?
@@ -1861,7 +1881,7 @@ sub update_standings {
 sub save_curmatch {
   my $date = shift;
   
-  print "save_curmatch($date)\n";
+  #print "save_curmatch($date)\n";
 
   # Save current week data....
   my $idx = 1;
@@ -1940,13 +1960,14 @@ sub clear_match_display {
 sub load_curmatch {
   my $date = shift;
 
-  print "load_curmatch($date)\n";
+  #print "load_curmatch($date)\n";
 
   &clear_match_display;
 
   # Fill in the $curmatches with the proper match info
   my $curidx = 1;
   foreach my $m (sort bydatetimefield @matches) {
+    next if (!defined($m->{"Date"}));
     if ($m->{"Date"} eq "$date") {
       $curmatch{$curidx}->{"HomePoints"} = $m->{"HomePoints"};
       $curmatch{$curidx}->{"HomeScore"} = $m->{"HomeScore"};
@@ -1984,7 +2005,7 @@ sub load_curmatch {
 sub update_scores {
   my $new_date = shift;
 
-  print "update_scores($new_date)  curdate = $curdate\n";
+  #print "update_scores($new_date)  curdate = $curdate\n";
   my $new_week;
     
   if ("$curdate" ne "$new_date") {
@@ -2209,7 +2230,7 @@ sub save_game_file_as {
   my $standingsref = shift;
   my $seasonref = shift;
 
-  print "($gf, .... )\n";
+  print "save_game_file_as($gf, .... )\n";
   $gf = "new-season.tks"  if ($gf eq "");
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
@@ -2220,7 +2241,7 @@ sub save_game_file_as {
   my $savefile = $fs->Show;
 
   if ($savefile eq "") {
-    print "Not saving file: $savefile\n";
+    print "Not saving file: $gf\n";
     return $gf;
   }
   else {
@@ -2239,6 +2260,7 @@ sub save_game_file_as {
       return undef;
     }
   }
+  return $savefile;
 }
 #---------------------------------------------------------------------
 # double check we've got a valid game file to save to first...
@@ -2258,7 +2280,7 @@ sub save_game_file {
     }
   }
   else {
-	&write_game_file($gf,$teamref,$matchref,$standingsref,$seasonref);
+    &write_game_file($gf,$teamref,$matchref,$standingsref,$seasonref);
   }	
 }
 
@@ -2281,9 +2303,8 @@ sub write_game_file {
 	       Season => $seasonref,
 	       Version => $gf_version,
 	     };
-  
 
-  DumpFile($gf,$data);
+  DumpFile("$gf",$data);
   $NeedSave = 0;
 }
 
