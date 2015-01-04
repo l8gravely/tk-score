@@ -4,6 +4,10 @@
 
 package Season;
 
+use Tk::FileSelect;
+
+
+#---------------------------------------------------------------------
 sub new {
   my $class = shift;
 
@@ -28,12 +32,14 @@ sub new {
   return $self;
 }
 
+#---------------------------------------------------------------------
 sub setvar {
     my ( $self, $var, $val ) = @_;
     $self->{$var} = $val if defined($val);
     return $self->{$var};
   }
 
+#---------------------------------------------------------------------
 sub getvar {
     my( $self, $var ) = @_;
     return $self->{$var};
@@ -55,15 +61,14 @@ sub season_open {
   my $top = $self->{TOP};
   my $fs = $top->FileSelect(
 			    -filter => '*.tks',
-			    -directory => $ENV{'HOME'},
+			    -directory => $ENV{'CWD'},
 			   );
-  
   $fs->geometry("600x400");
   
-  my $gf = $fs->Show;
+  my $game_file = $fs->Show;
   
-  if (&_season_load_file($gf)) {
-    # Reset window Title to game_file
+  if ($game_file && &_season_load_file($game_file)) {
+    # Set window Title to game_file
     $top->configure(title => $game_file);
   }
   else {
@@ -660,28 +665,22 @@ sub _sched_accept {
 
 sub _season_save_file_as {
   my ($self,$file) = @_;
-  my $top = self->{TOP};
+  my $top = $self->{TOP};
 
-  my $gf = shift;
-  my $teamref = shift;
-  my $matchref = shift;
-  my $standingsref = shift;
-  my $seasonref = shift;
-
-  $gf = "new-season.tks"  if ($gf eq "");
-  print "($gf, .... )\n";
+  $file = "new-season.tks"  if ($gf eq "");
+  print "($file, .... )\n";
 
   my $fs = $top->FileSelect(-directory => '.',
 			    -filter => "*.tks",
 			    -verify => ['!-d'],
-			    -initialfile => $gf,
+			    -initialfile => $file,
 	);
   $fs->geometry("600x400");
   my $savefile = $fs->Show;
 
   if ($savefile eq "") {
     print "Not saving file: $savefile\n";
-    return $gf;
+    return $file;
   }
   else {
     if (!($savefile =~ m/^.*\.tks$/)) {
@@ -692,7 +691,7 @@ sub _season_save_file_as {
       # Update our base report file name
       $rpt_file = $savefile;
       $rpt_file =~ s/\.tks$//;
-      $top->configure(title => $gf);
+      $top->configure(title => $savefile);
       return $savefile;
     }
     else {
@@ -705,14 +704,9 @@ sub _season_save_file_as {
 # double check we've got a valid game file to save to first...
 sub _season_save_file {
   my ($self,$file) = @_;
-  my $top = self->{TOP};
+  my $top = $self->{TOP};
 
-  my $teamref = shift;
-  my $matchref = shift;
-  my $standingsref = shift;
-  my $seasonref = shift;
-
-  print "save_season_file($file)\n";
+  print "_season_save_file($file)\n";
   if ($file eq "") {
     $file = $self->_season_save_file_as($file);
     if ($file eq "") {
