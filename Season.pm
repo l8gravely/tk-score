@@ -22,6 +22,12 @@ sub new {
 	      Game_file => "",
 	      File_Version => "v2.0",
 	      NeedSave => 0,
+	      Config => {
+			 default_font_type => "Helvetica",
+			 default_font_size => "10",
+			 default_background => "white",
+			 max_num_teams => 9,
+			},
 	     };
 
   $top->configure(-title => "Season Window",
@@ -31,6 +37,12 @@ sub new {
 
   bless $self, $class;
   return $self;
+}
+
+#---------------------------------------------------------------------
+sub default_font {
+  my ($self) = @_;
+  return($self->{Config}->{default_font_type}." ".$self->{Config}->{default_font_size});
 }
 
 #---------------------------------------------------------------------
@@ -95,7 +107,7 @@ sub season_win_init {
   $top->geometry('-300-300');
   
   # Default font.  
-  $top->optionAdd('*font', $default_font);
+  $top->optionAdd('*font', $self->default_font);
   
   # Use this to set default colors.  
   $top->optionAdd('*TkScore*background', $default_background);
@@ -188,6 +200,17 @@ sub season_create {
 
   print "init_new_season()\n";
 
+  my @initial_team_names = qw(one two three four five six seven eight nine);
+  my @matches = ();
+  my @match_dates = ();
+  my @scores = ( '','F',0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15);
+  my %lining_team;
+  my %bye_team;
+  my $homeforfeit= 0;
+  my $homecoed = 'no';
+  my $homescore = " ";
+  my $match_datelist;
+  
   my $game_per_week = 4;
   my $playoff_cnt = $playoff_rnds[0];
   my $first_match_scrimmage = 0;
@@ -196,6 +219,14 @@ sub season_create {
   my $start_date = "";
   my $descrip = "";
 
+  # Style Colors for DateList, made global so we can update them
+  # easily.  Might not need to do this down the line though....
+  
+  my $dls_red;
+  my $dls_green;
+  my $dls_done;
+  my $dls_blue;
+  
   # Reset to nothing, since it's a new season.
   $game_file = "";
 
@@ -205,8 +236,8 @@ sub season_create {
                   -width => 800,
                   -background => $default_background,
 		 );
-  $win->geometry('-500-500');
-  $win->optionAdd('*font', $default_font);
+  #$win->geometry('-500-500');
+  $win->optionAdd('*font', $self->default_font);
   
   my $t;
   
@@ -291,7 +322,10 @@ sub season_create {
   my $time_field_lb = $setup_fr->Scrolled('HList', -scrollbars => "e", -columns => 2, -header => 1,
 					  -height => 3, -selectmode => "single",
 					  -width => 30, -heigh => 5)->pack(-fill => 'x');
-  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', -background => $default_background, -anchor=>'w'); 
+
+  $dls_blue = $time_field_lb->ItemStyle('text', -foreground => '#000080', 
+					-background => $self->{Config}->{default_background}, -anchor=>'w'); 
+
   $time_field_lb->header('create', 0, -itemtype => 'text', -text => 'Time');
   $time_field_lb->columnWidth(0,-char => 15);
   $time_field_lb->header('create', 1, -itemtype => 'text', -text => 'Field');
@@ -360,6 +394,7 @@ sub season_create {
   my @teams_temp;
   my @entries;
   $team_fr->Label(-text => 'Team Names:')->pack(-side => 'top');
+  my $max_numteams = $self->{Config}->{max_num_teams};
   for (my $i=1; $i <= $max_numteams; $i++) {
     my $f = $team_fr->Frame();
     $f->Label(-text => " $i ", -width => 6)->pack(-side => 'left');
@@ -439,7 +474,7 @@ sub _sched_generate {
 		    -width => 400,
 		    -background => $default_background,
 		   );
-    $win->optionAdd('*font*' => $default_font);
+    $win->optionAdd('*font*' => $self->default_font);
     
     # Top Frame: Proposed Schedule
     my $sched_fr = $win->Frame(-pady => 10, -border => 1);
@@ -849,7 +884,7 @@ sub teams_rename {
 		  -width => 400,
 		  -background => $default_background,
 		  );
-  $win->optionAdd('*font*', $default_font);
+  $win->optionAdd('*font*', $self->default_font);
 
   my $setup_fr = $win->Frame(-borderwidth => 1, -relief => 'solid');
 
