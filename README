@@ -1,6 +1,23 @@
 
 tk-score - a tool for setting up, scoring and reporting on a soccer
-league.  
+league and the weekly results.  I wrote this after spending way to
+much time trying to manage and update a spreadsheet that the previous
+league secretary had used.  After running into all kinds of problems,
+I decided to write my own GUI tool using perl/tk since I'm familiar
+and comfortable with it.
+
+After several successful years of using this with our league, purely
+for my own benefit, we suddenly dropped from four games a week to
+three games (six teams) which threw a huge wrench into all the hidden
+assumptions I had made.  
+
+Turns out it was quicker to hack the code base into a purely six team,
+three match per-week script, than to do the full on Object Oriented
+re-write you see in the master branch now.  Ooops.  
+
+But I'm still committed to changing over to a purely OO based setup,
+since it will lead to cleaner code, easier updates in the future, and
+makes me learn new perl features.  A win all around!
 
 This is a huge work in progress, and has lots of built-in assumptions
 that are slowing being addressed:
@@ -12,13 +29,39 @@ that are slowing being addressed:
   so that every team plays each other twice, and at both the earlier and
   later times.
 
+  - hacking into a six team, three games-per-week was easy to do, but
+    also means I have to keep multiple scripts around.  Blech.
+
 - all games are scheduled once a week at two times across two fields.
 
 - For outdoor seasons, we have teams lining the fields, which impacts
-  the schedules.
+  the schedules, since we like to have teams line for two weeks in a
+  row, then pass on the equipment to a team starting at the first time
+  slot(s) the next two weeks.  
 
 - In the process of updating code to support only six teams, with
   three different time/field combos on a night.  
+
+- Scheduling is all hard-coded into some templates.  Really needs to
+  move into it's own module, and then hopefully be expanded into a more
+  generic tool which can do generic double round-robin scheduling.  Like
+  I have time to do that... but hopefully I can steal/borrow some
+  existing CPAN code to do what I want.
+
+- Really need to think about data structures before I get too deep
+  into the OO re-write.  Am I doing it right?  Is there an easier way to
+  do what I want?
+
+Branches:
+
+- master is where I'm doing most of my work lately, oops!  I need to
+  get into the git way to doing all work in a branch and then merging to
+  master.
+
+- six_team_hack:  this is a branch hacked from the old pre-OO code
+  base to quickly support a six team season with only three games
+  per-week.  works, but its a total hack.
+
 
 
 
